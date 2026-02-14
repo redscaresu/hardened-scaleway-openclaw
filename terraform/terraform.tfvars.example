@@ -1,0 +1,22 @@
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored for security
+
+region              = "fr-par"
+zone                = "fr-par-1"
+instance_type       = "DEV1-S"
+instance_name       = "openclaw-prod"
+admin_username      = "yourname"
+ssh_public_key_path = "~/.ssh/openclaw_ed25519.pub"
+
+# Backup bucket name (output by bootstrap script)
+backup_bucket_name  = "hso-backups-XXXXXXXX"
+
+# The following are prompted during plan/apply for security (not stored in files):
+#   - tailscale_auth_key   (get from https://login.tailscale.com/admin/settings/keys)
+#   - signal_alert_number  (your phone number in E.164 format, e.g. +15551234567)
+
+# API credentials (uncomment when enabling openclaw in cloud-init.yaml)
+# openclaw_api_key  = "sk-ant-xxxxx"
+
+# Optional: restrict SSH during initial setup
+# allowed_ssh_ips   = ["1.2.3.4/32"]
