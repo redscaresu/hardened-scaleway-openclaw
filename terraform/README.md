@@ -99,7 +99,7 @@ ssh-keygen -t ed25519 -C "openclaw-admin" -f ~/.ssh/openclaw_ed25519
 ```
 This creates `~/.ssh/openclaw_ed25519` (private key — keep secret) and `~/.ssh/openclaw_ed25519.pub` (public key — safe to share).
 
-**Tailscale auth key** — generate from https://login.tailscale.com/admin/settings/keys. Check "Reusable" and optionally "Ephemeral". You'll be prompted for this during `terraform plan/apply`.
+**Tailscale** — install on your local machine from https://tailscale.com/download and log in. Then generate an auth key from https://login.tailscale.com/admin/settings/keys (check "Reusable", optionally "Ephemeral"). You'll be prompted for this during `terraform plan/apply`.
 
 ## Setup
 
@@ -217,15 +217,44 @@ curl -s --max-time 2 http://169.254.42.42/conf && echo "EXPOSED" || echo "Blocke
 sudo systemctl status fail2ban auditd prometheus-node-exporter unattended-upgrades
 ```
 
-### 5. Verify Tailscale
+### 5. Configure Tailscale SSH
 
-If you provided an auth key, Tailscale should auto-connect:
+Tailscale replaces public SSH access. After initial setup over the public IP, you'll switch to SSH over Tailscale's private network and close the public port.
 
+**Verify Tailscale is connected:**
 ```bash
 sudo tailscale status
 ```
+Note the Tailscale IP (100.x.x.x).
 
-Note the Tailscale IP (100.x.x.x) — you'll use this for SSH once you lock down the public IP.
+**Configure Tailscale ACLs** — go to https://login.tailscale.com/admin/acls and add an SSH rule:
+
+```json
+"ssh": [
+    {
+        "src":    ["autogroup:member"],
+        "dst":    ["tag:openclaw"],
+        "users":  ["autogroup:nonroot"],
+        "action": "check",
+    },
+],
+```
+
+Also add a tag owner entry (if not already present):
+```json
+"tagOwners": {"tag:openclaw": ["autogroup:admin"]},
+```
+
+Then go to the **Machines** tab, find your server, and apply the `tag:openclaw` tag.
+
+- `check` mode requires browser re-authentication before granting SSH — more secure than `accept`
+- `autogroup:nonroot` prevents root SSH, matching the server-side hardening
+- The tag scopes SSH access to only your openclaw server
+
+**Test from your local machine** (must have [Tailscale installed](https://tailscale.com/download) and logged in):
+```bash
+ssh -i ~/.ssh/openclaw_ed25519 <admin_username>@<tailscale_ip>
+```
 
 ### 6. Link signal-cli
 
@@ -252,7 +281,7 @@ sudo journalctl -t restic-backup --no-pager
 
 ### 8. Lock Down Public SSH
 
-Once Tailscale SSH works (`ssh -i ~/.ssh/openclaw_ed25519 <user>@<tailscale_ip>`), remove public SSH access:
+Once Tailscale SSH works (step 5), remove the public SSH firewall rule. After this, the server has no public SSH port — the only way in is through your Tailscale network.
 
 ```bash
 sudo ufw delete limit 22/tcp
