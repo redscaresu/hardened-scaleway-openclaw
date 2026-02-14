@@ -88,14 +88,14 @@ sudo ufw delete limit 22/tcp
 
 ```
                     ┌─────────────────────────────────────┐
-                    │         Scaleway DEV1-S              │
-                    │         Ubuntu 24.04 LTS             │
+                    │         Scaleway DEV1-S             │
+                    │         Ubuntu 24.04 LTS            │
 Internet ──SSH──┐   │                                     │
   (temp)        │   │  ┌──────────┐  ┌────────────────┐   │
                 ├──►│  │ UFW      │  │ fail2ban       │   │
                     │  │ firewall │  │ brute-force    │   │
 Tailscale ──────┐   │  └──────────┘  │ protection     │   │
-  VPN (41641)   ├──►│               └────────────────┘   │
+  VPN (41641)   ├──►│                └────────────────┘   │
                     │  ┌──────────┐  ┌────────────────┐   │
                     │  │ AIDE     │  │ auditd         │   │
                     │  │ integrity│  │ syscall audit  │   │
