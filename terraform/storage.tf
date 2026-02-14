@@ -15,16 +15,25 @@ resource "scaleway_iam_api_key" "backup" {
 }
 
 # Policy to allow access to backup bucket
-# project_id is read from the security group (inherits provider's default project)
+# Scoped to minimum required permissions for restic:
+#   - BucketsRead: list bucket contents (restic snapshots, restic check)
+#   - ObjectsRead: download objects (restic restore)
+#   - ObjectsWrite: upload objects (restic backup)
+#   - ObjectsDelete: remove old snapshots (restic forget --prune)
 resource "scaleway_iam_policy" "backup" {
   count       = var.enable_backups ? 1 : 0
   name        = "${var.instance_name}-backup-policy"
-  description = "Allow openclaw to write backups to object storage"
+  description = "Allow openclaw to read/write/delete backup objects only"
 
   application_id = scaleway_iam_application.backup[0].id
 
   rule {
-    project_ids          = [scaleway_instance_security_group.openclaw.project_id]
-    permission_set_names = ["ObjectStorageFullAccess"]
+    project_ids = [scaleway_instance_security_group.openclaw.project_id]
+    permission_set_names = [
+      "ObjectStorageBucketsRead",
+      "ObjectStorageObjectsRead",
+      "ObjectStorageObjectsWrite",
+      "ObjectStorageObjectsDelete",
+    ]
   }
 }

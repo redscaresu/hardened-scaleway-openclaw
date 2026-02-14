@@ -35,6 +35,10 @@ packages:
   - aide
   - auditd
   - restic
+  - squid
+  - openjdk-21-jre-headless
+  - haveged
+  - qrencode
 
 # Write configuration files
 write_files:
@@ -88,6 +92,59 @@ write_files:
       kernel.kptr_restrict = 2
     permissions: '0644'
 
+  # fail2ban SSH jail - stricter than defaults
+  - path: /etc/fail2ban/jail.d/ssh.conf
+    content: |
+      [sshd]
+      enabled = true
+      port = ssh
+      filter = sshd
+      maxretry = 3
+      findtime = 600
+      bantime = 3600
+      banaction = ufw
+    permissions: '0644'
+
+  # auditd rules - track privilege escalation and security events
+  - path: /etc/audit/rules.d/hardening.rules
+    content: |
+      # Track sudo usage
+      -a always,exit -F arch=b64 -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -k sudo_usage
+      # Track su usage
+      -a always,exit -F arch=b64 -F path=/usr/bin/su -F perm=x -F auid>=1000 -k su_usage
+      # Track passwd changes
+      -w /etc/passwd -p wa -k passwd_changes
+      -w /etc/shadow -p wa -k shadow_changes
+      -w /etc/group -p wa -k group_changes
+      # Track SSH config changes
+      -w /etc/ssh/sshd_config -p wa -k sshd_config
+      -w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
+      # Track firewall changes
+      -w /etc/ufw/ -p wa -k ufw_changes
+      -w /etc/ufw/before.rules -p wa -k ufw_before_rules
+      # Track cron changes
+      -w /etc/crontab -p wa -k cron_changes
+      -w /var/spool/cron/ -p wa -k cron_changes
+      # Make audit config immutable (requires reboot to change)
+      -e 2
+    permissions: '0640'
+
+  # Log rotation for custom scripts
+  - path: /etc/logrotate.d/openclaw-custom
+    content: |
+      /var/log/squid/access.log {
+        weekly
+        rotate 12
+        compress
+        delaycompress
+        missingok
+        notifempty
+        postrotate
+          systemctl reload squid 2>/dev/null || true
+        endscript
+      }
+    permissions: '0644'
+
   # Unattended upgrades
   - path: /etc/apt/apt.conf.d/50unattended-upgrades
     content: |
@@ -120,10 +177,12 @@ write_files:
       # After deploying, link signal-cli then set SIGNAL_SENDER to your linked number
       SIGNAL_SENDER=""
       SIGNAL_RECIPIENT="${signal_alert_number}"
-    permissions: '0600'
+    permissions: '0640'
+    owner: root:root
 
   # Signal alert script - sends alerts via standalone signal-cli
   # Falls back to syslog if signal-cli is not configured
+  # Runs as the 'signal' user for privilege separation
   - path: /usr/local/bin/send-alert.sh
     content: |
       #!/bin/bash
@@ -135,7 +194,8 @@ write_files:
         exit 0
       fi
 
-      /usr/local/bin/signal-cli -a "$SIGNAL_SENDER" send -m "$MESSAGE" "$SIGNAL_RECIPIENT" \
+      # Run signal-cli as the dedicated signal user
+      sudo -u signal /usr/local/bin/signal-cli -a "$SIGNAL_SENDER" send -m "$MESSAGE" "$SIGNAL_RECIPIENT" \
         2>&1 | logger -t signal-alert
 
       if [ $? -eq 0 ]; then
@@ -184,6 +244,45 @@ write_files:
       if echo "$REPORT" | grep -q "changed\|added\|removed"; then
         /usr/local/bin/send-alert.sh "AIDE file integrity alert on $(hostname): $REPORT"
       fi
+    permissions: '0755'
+
+  # Squid denied request alerter
+  # Runs via cron every 5 minutes, sends a batched Signal alert for blocked domains
+  - path: /usr/local/bin/squid-denied-alert.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      STATEFILE="/var/run/squid-denied-alert.offset"
+      LOGFILE="/var/log/squid/access.log"
+
+      [ -f "$LOGFILE" ] || exit 0
+
+      # Get byte offset from last run
+      OFFSET=0
+      [ -f "$STATEFILE" ] && OFFSET=$(cat "$STATEFILE")
+      CURRENT_SIZE=$(stat -c%s "$LOGFILE" 2>/dev/null || echo 0)
+
+      # Log rotated — reset offset
+      if [ "$CURRENT_SIZE" -lt "$OFFSET" ]; then
+        OFFSET=0
+      fi
+
+      # Save current position for next run
+      echo "$CURRENT_SIZE" > "$STATEFILE"
+
+      # Extract new DENIED entries since last check
+      DENIED=$(tail -c +"$((OFFSET + 1))" "$LOGFILE" 2>/dev/null \
+        | grep "TCP_DENIED" \
+        | awk '{print $7}' \
+        | sed 's/:443$//' \
+        | sort | uniq -c | sort -rn \
+        | head -10)
+
+      [ -z "$DENIED" ] && exit 0
+
+      COUNT=$(echo "$DENIED" | awk '{s+=$1} END {print s}')
+      /usr/local/bin/send-alert.sh "Squid blocked $COUNT outbound request(s) on $(hostname):
+      $DENIED"
     permissions: '0755'
 
   # --- OPENCLAW: Uncomment the sections below to install the openclaw app ---
@@ -235,6 +334,155 @@ write_files:
   #     WantedBy=multi-user.target
   #   permissions: '0644'
 
+  # Post-deploy signal-cli linking helper
+  # Run: sudo link-signal.sh
+  # Then scan the QR code with Signal on your phone
+  - path: /usr/local/bin/link-signal.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      SIGNAL_DATA="/var/lib/signal-cli"
+
+      # Check if already linked
+      if [ -f "$SIGNAL_DATA/.local/share/signal-cli/data/accounts.json" ] && \
+         grep -q '"number"' "$SIGNAL_DATA/.local/share/signal-cli/data/accounts.json" 2>/dev/null; then
+        echo "signal-cli is already linked."
+        echo "To re-link: rm -rf $SIGNAL_DATA/.local/share/signal-cli/data/ && link-signal.sh"
+        exit 0
+      fi
+
+      echo "=== Signal-cli Device Linking ==="
+      echo ""
+      echo "1. Open Signal on your phone"
+      echo "2. Go to Settings > Linked Devices > Link New Device"
+      echo "3. Scan the QR code below"
+      echo ""
+
+      # Start signal-cli link in background as signal user, capture URI
+      OUTFILE=$(mktemp)
+      sudo -u signal signal-cli link -n "$(hostname)" > "$OUTFILE" 2>/dev/null &
+      LINK_PID=$!
+
+      # Wait for the URI to appear
+      for i in $(seq 1 30); do
+        if [ -s "$OUTFILE" ]; then
+          break
+        fi
+        sleep 1
+      done
+
+      URI=$(head -1 "$OUTFILE")
+      if [ -z "$URI" ]; then
+        echo "ERROR: Failed to get link URI. Check signal-cli logs."
+        kill $LINK_PID 2>/dev/null
+        exit 1
+      fi
+
+      # Display QR code in terminal
+      echo "$URI" | qrencode -t UTF8
+      echo ""
+      echo "If the terminal QR code is hard to scan, copy this URI:"
+      echo "$URI"
+      echo ""
+      echo "Then on your Mac run:"
+      echo "  echo '$URI' | qrencode -o /tmp/signal.png && open /tmp/signal.png"
+      echo ""
+      echo "Waiting for scan..."
+
+      # Wait for signal-cli link to complete (user scans QR code)
+      wait $LINK_PID
+      rm -f "$OUTFILE"
+
+      # After linking, configure alerts
+      sleep 2
+      LINKED_NUMBER=$(grep -oP '"number"\s*:\s*"\K[^"]+' "$SIGNAL_DATA/.local/share/signal-cli/data/accounts.json" 2>/dev/null | head -1)
+      if [ -n "$LINKED_NUMBER" ]; then
+        sed -i "s|SIGNAL_SENDER=\"\"|SIGNAL_SENDER=\"$LINKED_NUMBER\"|" /etc/openclaw-alerts.conf
+        echo ""
+        echo "Linked as: $LINKED_NUMBER"
+        echo "Sending test alert..."
+        /usr/local/bin/send-alert.sh "Signal alerts configured on $(hostname)"
+        echo "Done! Check your Signal app for the test message."
+      else
+        echo "Linking may have failed. Check: sudo -u signal signal-cli listAccounts"
+      fi
+    permissions: '0755'
+
+  # Squid proxy allowlist - only these domains can be accessed via HTTP/HTTPS
+  # To add domains: edit this file on the server, then run: systemctl reload squid
+  - path: /etc/squid/allowed-domains.txt
+    content: |
+      # Package repositories
+      .ubuntu.com
+      .canonical.com
+      .launchpad.net
+      .launchpadcontent.net
+      security.ubuntu.com
+
+      # Tailscale
+      .tailscale.com
+      .tailscale.io
+
+      # Signal (for signal-cli alerts)
+      .signal.org
+      .whispersystems.org
+
+      # GitHub (signal-cli releases, openclaw repo)
+      .github.com
+      .githubusercontent.com
+
+      # Scaleway (backups, metadata, API)
+      .scw.cloud
+      .scaleway.com
+
+      # Node.js (for openclaw, when enabled)
+      .nodesource.com
+      .npmjs.org
+      .npmjs.com
+    permissions: '0644'
+
+  # Squid proxy configuration - forward proxy with allowlist
+  # Uses CONNECT ACL for HTTPS (no SSL decryption, no cert pinning issues)
+  - path: /etc/squid/squid.conf
+    content: |
+      # Squid outbound proxy - allowlist mode
+      # Forward proxy on localhost:3128, enforced via iptables
+      # HTTPS filtered by CONNECT hostname (no MITM/SSL bump)
+
+      http_port 3128
+
+      # Allowlist ACL
+      acl allowed_domains dstdomain "/etc/squid/allowed-domains.txt"
+      acl CONNECT method CONNECT
+
+      # Allow CONNECT (HTTPS tunneling) only to allowlisted domains
+      http_access allow CONNECT allowed_domains
+      # Allow HTTP to allowlisted domains
+      http_access allow allowed_domains
+      # Deny everything else
+      http_access deny all
+
+      # Logging - log denied requests for debugging
+      access_log /var/log/squid/access.log
+
+      # Minimal caching (this is a filter, not a cache)
+      cache deny all
+
+      # Security headers
+      forwarded_for delete
+      via off
+
+      # Visible hostname
+      visible_hostname openclaw-proxy
+    permissions: '0644'
+
+  # NOTE: System-wide proxy env vars are written in runcmd AFTER squid starts
+  # (write_files runs before cloud-init's curl/apt commands)
+
+  # NOTE: APT proxy config is written in runcmd AFTER squid starts
+  # (write_files runs before package install, so proxy can't be set here)
+
   # # OPENCLAW: Health check script
   # - path: /usr/local/bin/openclaw-health.sh
   #   content: |
@@ -248,9 +496,12 @@ write_files:
 # Run commands on first boot
 runcmd:
   # Generate static restic backup password (once, not on every source)
+  # Password is scrubbed from cloud-init logs to prevent exposure
   - |
     RESTIC_PW=$(openssl rand -base64 32)
     sed -i "s|PLACEHOLDER|$RESTIC_PW|" /root/.restic-env
+    unset RESTIC_PW
+    sed -i '/RESTIC_PW=/d' /var/log/cloud-init-output.log 2>/dev/null || true
 
   # Apply sysctl settings
   - sysctl -p /etc/sysctl.d/99-security.conf
@@ -265,12 +516,26 @@ runcmd:
   # Enable unattended upgrades
   - dpkg-reconfigure -plow unattended-upgrades
 
-  # Install signal-cli native binary for alerts (no Java required)
+  # Prefer IPv4 (Scaleway instances don't have working IPv6, breaks signal-cli CDSI lookups)
+  - sed -i 's/^#precedence ::ffff:0:0\/96  100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+
+  # Create dedicated signal user for signal-cli (privilege separation)
+  - useradd --system --home-dir /var/lib/signal-cli --create-home --shell /usr/sbin/nologin signal
+  - chmod 700 /var/lib/signal-cli
+  - chown root:signal /etc/openclaw-alerts.conf
+
+  # Install signal-cli JVM version for alerts
+  # Note: native binary hangs on RefreshRecipientsJob due to CDSI 404; JVM version handles it gracefully
   - |
     SIGNAL_CLI_VERSION="0.13.12"
-    curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v$${SIGNAL_CLI_VERSION}/signal-cli-$${SIGNAL_CLI_VERSION}-Linux-native.tar.gz" \
+    curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v$${SIGNAL_CLI_VERSION}/signal-cli-$${SIGNAL_CLI_VERSION}.tar.gz" \
       | tar xz -C /opt
-    ln -sf /opt/signal-cli /usr/local/bin/signal-cli
+    ln -sf /opt/signal-cli-$${SIGNAL_CLI_VERSION}/bin/signal-cli /usr/local/bin/signal-cli
+
+  # Allow signal user to run signal-cli without password (for send-alert.sh called from cron as root)
+  - |
+    echo "root ALL=(signal) NOPASSWD: /usr/local/bin/signal-cli" > /etc/sudoers.d/signal-cli
+    chmod 440 /etc/sudoers.d/signal-cli
 
   # Install Tailscale
   - curl -fsSL https://tailscale.com/install.sh | sh
@@ -282,6 +547,7 @@ runcmd:
   # Set up cron jobs
   - echo "0 2 * * * root /usr/local/bin/backup-server.sh" >> /etc/crontab
   - echo "0 3 * * * root /usr/local/bin/aide-check.sh" >> /etc/crontab
+  - echo "*/5 * * * * root /usr/local/bin/squid-denied-alert.sh" >> /etc/crontab
 
   # --- OPENCLAW: Uncomment the sections below to install the openclaw app ---
 
@@ -304,12 +570,63 @@ runcmd:
   #   chown -R openclaw:openclaw /opt/openclaw
   #   HOME=/var/lib/openclaw sudo -u openclaw pnpm install
 
+  # Start squid proxy
+  - systemctl enable squid
+  - systemctl restart squid
+
+  # Configure APT and system-wide proxy (must be after squid starts)
+  - |
+    cat > /etc/apt/apt.conf.d/95proxy << 'EOF'
+    Acquire::http::Proxy "http://127.0.0.1:3128";
+    Acquire::https::Proxy "http://127.0.0.1:3128";
+    EOF
+  - mkdir -p /etc/environment.d
+  - |
+    cat > /etc/environment.d/proxy.conf << 'EOF'
+    http_proxy=http://127.0.0.1:3128
+    https_proxy=http://127.0.0.1:3128
+    HTTP_PROXY=http://127.0.0.1:3128
+    HTTPS_PROXY=http://127.0.0.1:3128
+    no_proxy=localhost,127.0.0.1,169.254.42.42
+    NO_PROXY=localhost,127.0.0.1,169.254.42.42
+    EOF
+
+  # Enforce outbound filtering via iptables
+  # Block direct HTTP/HTTPS for all users except squid (proxy) and root
+  # Root exemption: needed for tailscaled, systemd services during setup
+  # All other users/services must go through squid proxy (127.0.0.1:3128)
+  - |
+    # Let squid's own outbound connections through
+    iptables -A OUTPUT -m owner --uid-owner proxy -p tcp --dport 80 -j ACCEPT
+    iptables -A OUTPUT -m owner --uid-owner proxy -p tcp --dport 443 -j ACCEPT
+    # Let root through (tailscaled, system services)
+    iptables -A OUTPUT -m owner --uid-owner root -p tcp --dport 80 -j ACCEPT
+    iptables -A OUTPUT -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT
+    # Let signal user through (signal-cli needs direct HTTPS to Signal servers)
+    iptables -A OUTPUT -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT
+    # Block direct HTTP/HTTPS for everyone else
+    iptables -A OUTPUT -p tcp --dport 80 -j REJECT
+    iptables -A OUTPUT -p tcp --dport 443 -j REJECT
+
+  # Persist iptables rules via UFW before.rules
+  - |
+    sed -i '/^COMMIT/i \
+    # Squid proxy enforcement - block direct HTTP/HTTPS for non-root/non-proxy/non-signal\n\
+    -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 80 -j ACCEPT\n\
+    -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 443 -j ACCEPT\n\
+    -A ufw-before-output -m owner --uid-owner root -p tcp --dport 80 -j ACCEPT\n\
+    -A ufw-before-output -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT\n\
+    -A ufw-before-output -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT\n\
+    -A ufw-before-output -p tcp --dport 80 -j REJECT\n\
+    -A ufw-before-output -p tcp --dport 443 -j REJECT' /etc/ufw/before.rules
+
   # Enable and start services
   - systemctl daemon-reload
   - systemctl enable prometheus-node-exporter
   - systemctl start prometheus-node-exporter
   - systemctl enable auditd
   - systemctl start auditd
+  - augenrules --load
 
   # # OPENCLAW: Enable and start openclaw service
   # - systemctl enable openclaw
@@ -323,6 +640,9 @@ runcmd:
   # Persisted via UFW before.rules (iptables-persistent conflicts with ufw)
   - iptables -A OUTPUT -d 169.254.42.42 -j DROP
   - sed -i '/^COMMIT/i -A ufw-before-output -d 169.254.42.42 -j DROP' /etc/ufw/before.rules
+
+  # Reload UFW to apply before.rules changes (squid enforcement + metadata block)
+  - ufw reload
 
   # Set up cron jobs for openclaw health check (uncomment when openclaw is installed)
   # # OPENCLAW: Health check cron

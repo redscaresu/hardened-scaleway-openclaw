@@ -12,11 +12,11 @@ A single Scaleway instance with defense-in-depth security:
 
 | Layer | Tools |
 |---|---|
-| **Network** | UFW firewall (default deny), Scaleway security groups, Tailscale zero-trust VPN |
+| **Network** | UFW firewall (default deny), Scaleway security groups, Tailscale zero-trust VPN, Squid outbound proxy (allowlist) |
 | **SSH** | Key-only auth (ed25519), root login disabled, rate-limited, fail2ban |
 | **Kernel** | SYN flood protection, anti-spoofing, restricted dmesg, hidden kernel pointers |
 | **Monitoring** | AIDE file integrity checks, auditd syscall auditing, prometheus-node-exporter |
-| **Alerts** | Signal messenger notifications for security events |
+| **Alerts** | Signal messenger notifications for security events and blocked outbound requests |
 | **Backups** | Nightly encrypted backups to S3 via restic (7 daily, 4 weekly, 12 monthly) |
 | **Updates** | Unattended security patches with automatic reboot |
 | **Secrets** | Metadata API blocked, no secrets in code, remote state in private S3 |
@@ -66,7 +66,7 @@ terraform plan
 terraform apply
 ```
 
-### 4. Verify (after ~5-10 min for cloud-init)
+### 4. Verify & Link Signal (after ~5-10 min for cloud-init)
 
 ```bash
 # SSH in (command shown in terraform output)
@@ -80,6 +80,9 @@ sudo grep RESTIC_PASSWORD /root/.restic-env
 
 # Verify Tailscale
 sudo tailscale status
+
+# Link Signal alerts (interactive — generates QR code to scan)
+sudo link-signal.sh
 
 # Lock down public SSH once Tailscale works
 sudo ufw delete limit 22/tcp
@@ -97,6 +100,10 @@ Internet ──SSH──┐   │                                     │
                     │  │ firewall │  │ brute-force    │   │
 Tailscale ──────┐   │  └──────────┘  │ protection     │   │
   VPN (41641)   ├──►│                └────────────────┘   │
+                    │  ┌──────────┐  ┌────────────────┐   │
+                    │  │ Squid    │──│ Allowlist-only │   │
+                    │  │ proxy    │  │ outbound HTTP  │   │
+                    │  └──────────┘  └────────────────┘   │
                     │  ┌──────────┐  ┌────────────────┐   │
                     │  │ AIDE     │  │ auditd         │   │
                     │  │ integrity│  │ syscall audit  │   │

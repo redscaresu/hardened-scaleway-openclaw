@@ -9,6 +9,9 @@ resource "random_id" "suffix" {
   byte_length = 4
 }
 
+# Reserved public IP for initial SSH access (before Tailscale setup)
+resource "scaleway_instance_ip" "public" {}
+
 # Openclaw server instance
 resource "scaleway_instance_server" "openclaw" {
   name  = var.instance_name
@@ -16,8 +19,9 @@ resource "scaleway_instance_server" "openclaw" {
   image = "ubuntu_noble" # Ubuntu 24.04 LTS
   zone  = var.zone
 
-  # Dynamic public IP for initial SSH access (before Tailscale setup)
-  enable_dynamic_ip = true
+  # Public IP for initial SSH access (before Tailscale setup)
+  # Use a reserved IP with routed=false so cloud-init can reach the metadata API (169.254.42.42)
+  ip_id = scaleway_instance_ip.public.id
 
   # Use local storage for maximum security (data stays on instance)
   root_volume {
@@ -55,9 +59,9 @@ resource "scaleway_instance_security_group" "openclaw" {
   inbound_default_policy  = "drop"
   outbound_default_policy = "accept"
 
-  # SSH - restricted or open (Tailscale will replace this)
+  # SSH - only if public SSH is enabled (disable for Tailscale-only access)
   dynamic "inbound_rule" {
-    for_each = length(var.allowed_ssh_ips) > 0 ? var.allowed_ssh_ips : ["0.0.0.0/0"]
+    for_each = var.enable_public_ssh ? (length(var.allowed_ssh_ips) > 0 ? var.allowed_ssh_ips : ["0.0.0.0/0"]) : []
     content {
       action   = "accept"
       port     = 22

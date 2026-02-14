@@ -7,10 +7,11 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 | Component | Purpose |
 |---|---|
 | **Scaleway DEV1-S** | Ubuntu 24.04 LTS instance (2 vCPU, 2GB RAM, 20GB SSD) |
+| **Squid proxy** | Allowlist-only outbound HTTP/HTTPS filtering |
 | **Tailscale** | Zero-trust VPN with SSH access |
 | **UFW** | Firewall — rate-limited SSH (22/tcp) and Tailscale (41641/udp) only |
 | **fail2ban** | Brute-force SSH protection |
-| **signal-cli** | Standalone Signal messenger for server alerts |
+| **signal-cli** | Signal messenger alerts (JVM version, linked as secondary device) |
 | **restic** | Encrypted nightly backups to Scaleway S3 |
 | **AIDE** | File integrity monitoring (nightly scan) |
 | **auditd** | System call auditing |
@@ -22,9 +23,10 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 **Network**
 - UFW firewall — default deny inbound, only SSH (22/tcp rate-limited) and Tailscale (41641/udp) allowed
 - SSH rate-limited at firewall level (6 connections / 30 seconds) before fail2ban even sees it
-- fail2ban for brute-force SSH ban
+- fail2ban SSH jail — bans IP after 3 failed attempts in 10 minutes (1 hour ban)
 - Tailscale zero-trust VPN — public SSH can be removed once Tailscale is connected
 - Scaleway security group — drop all inbound except SSH, Tailscale, ICMP
+- Squid outbound proxy — allowlist-only HTTP/HTTPS filtering (see [Outbound Proxy](#outbound-proxy) below)
 
 **SSH**
 - Root login disabled
@@ -46,27 +48,39 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 - IP forwarding enabled (required by Tailscale)
 
 **Monitoring & Integrity**
-- AIDE file integrity monitoring — nightly scan, alerts on changes
-- auditd system call auditing
+- AIDE file integrity monitoring — nightly scan, alerts on changes via Signal
+- auditd system call auditing with custom rules for sudo, su, passwd, SSH config, firewall, and cron changes
+- Audit rules are immutable (`-e 2`) — require reboot to modify, preventing runtime tampering
 - prometheus-node-exporter for system metrics
 
+**Privilege Separation**
+- signal-cli runs as a dedicated `signal` user (not root) — limits blast radius of any signal-cli vulnerability
+- signal-cli data stored in `/var/lib/signal-cli/` with `chmod 700`
+- Scoped sudoers: only root can invoke signal-cli as the signal user (`/etc/sudoers.d/signal-cli`)
+- Admin user has `NOPASSWD` sudo — standard for cloud VMs where SSH key is the authentication boundary. Tailscale SSH adds a second authentication factor (`check` mode requires browser re-auth)
+
 **Updates**
-- Unattended security upgrades enabled
+- Unattended security upgrades enabled (security repos only, not all packages)
 - Automatic reboot at 3am if kernel update requires it
 
 **Secrets**
 - No secrets in committed files — `terraform.tfvars` and `.env.terraform` are gitignored
-- Sensitive variables (`tailscale_auth_key`, `signal_alert_number`) prompted at plan/apply, never written to disk
+- Sensitive variables (`tailscale_auth_key`, `signal_alert_number`) passed via environment variables from `.env.terraform` (gitignored, chmod 600)
 - Scaleway metadata API (`169.254.42.42`) blocked after provisioning via iptables — prevents any process from reading cloud-init secrets
-- Metadata API block persisted across reboots via UFW `before.rules`
+- Metadata API block persisted across reboots via UFW `before.rules` (see [Metadata API Blocking](#metadata-api-blocking) for timing details)
 - Terraform state stored remotely in a private, versioned S3 bucket — contains secrets, access controlled via Scaleway IAM
-- Restic backup password generated once on first boot — must be saved externally
+- Restic backup password generated once on first boot, scrubbed from cloud-init logs — must be saved externally
 
 **Backups**
 - Nightly encrypted backups of system configs to Scaleway S3 via restic
 - Retention: 7 daily, 4 weekly, 12 monthly snapshots
 - Repository integrity checked after each backup
-- Dedicated IAM credentials scoped to backup bucket only
+- Dedicated IAM credentials scoped to backup bucket only (read/write/delete objects — no bucket management)
+
+**Log Management**
+- Custom logrotate config for squid access logs (weekly, 12 weeks retained, compressed)
+- All alert scripts log to syslog via `logger` (managed by system logrotate)
+- Squid access log tracks all allowed and denied requests
 
 ### Openclaw App
 
@@ -160,6 +174,7 @@ Edit `terraform.tfvars` with your values. At minimum set:
 - `admin_username` — your username on the server
 - `ssh_public_key_path` — path to your public key
 - `backup_bucket_name` — the backup bucket name output by the bootstrap script
+- `enable_public_ssh` — set to `false` for Tailscale-only access from first boot (no public SSH ever exposed)
 
 Edit `.env.terraform` (created by the bootstrap script) and fill in the sensitive variables at the bottom:
 - `TF_VAR_tailscale_auth_key` — from prerequisites
@@ -182,10 +197,22 @@ Terraform will output the public IP and SSH command.
 
 The server runs cloud-init on first boot then reboots. Wait ~5-10 minutes before connecting.
 
+### Tailscale-Only Mode (`enable_public_ssh = false`)
+
+If you deployed with `enable_public_ssh = false`, the server **never** had a public SSH port. Connect via Tailscale only:
+
+1. Check https://login.tailscale.com/admin/machines for the new machine
+2. SSH via Tailscale: `ssh <admin_username>@<tailscale-hostname>`
+3. Skip step 8 below (public SSH is already disabled)
+
 ### 1. SSH In
 
 ```bash
+# If public SSH is enabled:
 ssh -i ~/.ssh/openclaw_ed25519 <admin_username>@<public_ip>
+
+# If Tailscale-only:
+ssh <admin_username>@<tailscale-hostname>
 ```
 
 If connection refused, the server is still rebooting — wait and retry.
@@ -265,18 +292,10 @@ ssh -i ~/.ssh/openclaw_ed25519 <admin_username>@<tailscale_ip>
 
 ### 6. Link signal-cli
 
-signal-cli is installed but needs to be linked to a Signal account before alerts work. Until linked, alerts fall back to syslog.
+signal-cli is installed but needs linking to your Signal account before alerts work. See [Signal Alerts](#signal-alerts) for full details.
 
 ```bash
-# Link as secondary device to your existing Signal account
-sudo signal-cli link -n "openclaw-server"
-# Prints a tsdevice:// URI — open in Signal app > Linked Devices
-
-# Set your sender number
-sudo sed -i 's/SIGNAL_SENDER=""/SIGNAL_SENDER="+YOUR_NUMBER"/' /etc/openclaw-alerts.conf
-
-# Test
-sudo /usr/local/bin/send-alert.sh "Test alert from openclaw server"
+sudo link-signal.sh
 ```
 
 ### 7. Test Backup
@@ -309,10 +328,283 @@ If you run Prometheus/Grafana on another Tailscale node and want direct access, 
 sudo ufw allow in on tailscale0 to any port 9100 proto tcp
 ```
 
+## Signal Alerts
+
+Server events are sent to your phone via [Signal](https://signal.org/) using [signal-cli](https://github.com/AsamK/signal-cli). This gives you real-time notifications without relying on email infrastructure or third-party monitoring services.
+
+### What Gets Alerted
+
+| Event | Script | Schedule |
+|---|---|---|
+| Squid blocked outbound requests | `squid-denied-alert.sh` | Every 5 minutes |
+| Restic backup completed | `backup-server.sh` | Nightly 2am |
+| AIDE file integrity changes | `aide-check.sh` | Nightly 3am |
+| Server provisioning complete | cloud-init `runcmd` | First boot |
+
+All alerts go through `/usr/local/bin/send-alert.sh`, which reads the sender/recipient config from `/etc/openclaw-alerts.conf`. If signal-cli isn't linked yet, alerts fall back to syslog.
+
+### How It Works
+
+signal-cli runs as a dedicated `signal` system user (not root) for privilege separation. It's linked as a **secondary device** on your existing Signal account — no separate phone number needed. Messages appear in your **"Note to Self"** conversation (since sender and recipient are the same number).
+
+```
+Server event → send-alert.sh → sudo -u signal signal-cli → Signal servers → your phone
+```
+
+The JVM version of signal-cli is used (not the native GraalVM binary) because the native binary hangs indefinitely on CDSI contact refresh. The JVM version handles this gracefully.
+
+**Security:** To revoke server access to your Signal account, open Signal on your phone > Settings > Linked Devices and remove the server's device. This immediately prevents the server from sending or receiving messages.
+
+### Prerequisites
+
+- A [Signal account](https://signal.org/) on your phone
+- `qrencode` on your local machine for QR code scanning (optional — `brew install qrencode` on macOS)
+
+### Setup
+
+After deploying, SSH into the server and run:
+
+```bash
+sudo link-signal.sh
+```
+
+This interactive script will:
+1. Start the signal-cli linking process
+2. Display a QR code in the terminal
+3. Wait for you to scan it with Signal (Settings > Linked Devices > Link New Device)
+4. Auto-configure `/etc/openclaw-alerts.conf` with your number
+5. Send a test alert to confirm everything works
+
+**If the terminal QR code is hard to scan**, the script prints the raw URI. Copy it to your Mac:
+```bash
+echo 'PASTE_URI_HERE' | qrencode -o /tmp/signal.png && open /tmp/signal.png
+```
+
+### Sending a Manual Alert
+
+```bash
+sudo /usr/local/bin/send-alert.sh "Your message here"
+```
+
+### Troubleshooting
+
+- **No messages received:** Check "Note to Self" in Signal — that's where alerts from your own number appear
+- **signal-cli not linked:** `sudo cat /var/lib/signal-cli/.local/share/signal-cli/data/accounts.json`
+- **SIGNAL_SENDER not set:** `sudo cat /etc/openclaw-alerts.conf` — must have your number
+- **Re-link:** `sudo rm -rf /var/lib/signal-cli/.local/share/signal-cli/data/ && sudo link-signal.sh`
+- **First send slow (~10-30s):** Normal — signal-cli syncs contacts on first use after restart
+- **CDSI refresh warning in logs:** Harmless — the JVM version logs a warning but sends successfully
+- **Revoke access:** Open Signal on your phone > Settings > Linked Devices > remove the server's device
+
+## Outbound Proxy
+
+All outbound HTTP/HTTPS traffic is filtered through a Squid forward proxy with an allowlist. Only explicitly permitted domains can be accessed — everything else is blocked.
+
+### Why
+
+Most server hardening focuses on inbound traffic. But a compromised process can still exfiltrate data or download payloads via outbound connections. The allowlist approach ensures only explicitly permitted domains can be reached.
+
+### How It Works
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────┐
+│ Application  │────►│ Squid proxy  │────►│ Allowed  │
+│ (port 3128)  │     │ (localhost)  │     │ domains  │
+└──────────────┘     └──────────────┘     └──────────┘
+                           │
+                     ┌─────▼─────┐
+                     │  DENIED   │
+                     │ (403/REJ) │
+                     └───────────┘
+```
+
+1. **Squid** listens on `127.0.0.1:3128` as a forward proxy
+2. **CONNECT ACL** filters HTTPS by hostname (no SSL interception/MITM, no cert pinning issues)
+3. **Allowlist** at `/etc/squid/allowed-domains.txt` — only these domains are permitted
+4. **iptables enforcement** — non-root, non-proxy users are blocked from direct HTTP/HTTPS via `ufw-before-output` chain rules
+5. **APT and system-wide proxy** env vars route all package managers and CLI tools through squid
+
+### Allowed Domains
+
+The default allowlist covers essential services only:
+
+| Category | Domains |
+|---|---|
+| **Ubuntu packages** | `.ubuntu.com`, `.canonical.com`, `.launchpad.net` |
+| **Tailscale** | `.tailscale.com`, `.tailscale.io` |
+| **Signal** | `.signal.org`, `.whispersystems.org` |
+| **GitHub** | `.github.com`, `.githubusercontent.com` |
+| **Scaleway** | `.scw.cloud`, `.scaleway.com` |
+| **Node.js** | `.nodesource.com`, `.npmjs.org`, `.npmjs.com` |
+
+### Managing the Allowlist
+
+```bash
+# View current allowlist
+cat /etc/squid/allowed-domains.txt
+
+# Add a domain (prefix with . for all subdomains)
+echo ".example.com" | sudo tee -a /etc/squid/allowed-domains.txt
+
+# Reload squid (no restart needed)
+sudo systemctl reload squid
+
+# Test
+curl -x http://127.0.0.1:3128 https://example.com    # should work
+curl -x http://127.0.0.1:3128 https://facebook.com    # should get 403
+```
+
+### iptables Enforcement
+
+Direct HTTP/HTTPS bypassing the proxy is blocked at the kernel level via owner-based iptables rules in the UFW `ufw-before-output` chain:
+
+- **proxy** (squid) user: allowed direct HTTP/HTTPS (squid's own outbound connections)
+- **root**: allowed direct HTTP/HTTPS (needed for Tailscale, systemd services)
+- **signal** user: allowed direct HTTPS only (signal-cli needs direct access to Signal servers)
+- **Everyone else**: must go through squid on port 3128, direct 80/443 is REJECTED
+- Rules are written to `/etc/ufw/before.rules` and loaded via `ufw reload` — persist across reboots
+
+**Scope:** The proxy enforces filtering for non-privileged users. System users (root, proxy, signal) have direct outbound access as required by their services. DNS queries are not filtered by squid (they use UDP, not HTTP).
+
+### Blocked Request Alerts
+
+When squid blocks an outbound request, you get a Signal alert. A cron job runs every 5 minutes, checks for new `TCP_DENIED` entries in the squid access log, and sends a batched summary:
+
+```
+Squid blocked 7 outbound request(s) on openclaw-prod:
+  3 facebook.com
+  2 twitter.com
+  2 tiktok.com
+```
+
+- Alerts are batched — one message per 5-minute window, not per request
+- Duplicate domains are counted and deduplicated
+- Top 10 blocked domains are included per alert
+- No alert is sent if nothing was blocked
+- State is tracked via `/var/run/squid-denied-alert.offset` and survives log rotation
+
+### Troubleshooting
+
+```bash
+# Check squid status
+sudo systemctl status squid
+
+# View recent access log (allowed and denied requests)
+sudo tail -50 /var/log/squid/access.log
+
+# Check iptables enforcement rules
+sudo iptables -L ufw-before-output -n -v | grep -E "80|443"
+
+# Test proxy directly
+curl -v -x http://127.0.0.1:3128 https://github.com
+
+# If a service needs a new domain, check what's being blocked
+sudo tail -f /var/log/squid/access.log | grep DENIED
+
+# Manually trigger the blocked request alert (doesn't wait for cron)
+sudo /usr/local/bin/squid-denied-alert.sh
+```
+
+## Security Details
+
+### Metadata API Blocking
+
+Scaleway instances expose cloud-init user_data (containing secrets like Tailscale auth keys and S3 credentials) via `http://169.254.42.42/conf`. This is blocked via iptables and persisted in UFW `before.rules` so it survives reboots.
+
+**Timing:** The block is applied at the end of cloud-init's `runcmd`, after all services are configured but before the final reboot. After reboot, the block loads from `before.rules` early in the boot process.
+
+```bash
+# Verify the block is active
+curl -s --max-time 2 http://169.254.42.42/conf && echo "EXPOSED" || echo "Blocked (good)"
+```
+
+### AIDE File Integrity
+
+AIDE monitors system files for unauthorized changes. The baseline is initialized at the end of cloud-init (after all services are configured).
+
+```bash
+# View what AIDE monitors
+sudo aide --config-check
+
+# Run a manual check
+sudo aide --check
+
+# Update baseline after intentional changes (e.g., config edits)
+sudo aideinit && sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+
+# Exclude noisy directories (edit and re-init)
+sudo vim /etc/aide/aide.conf
+```
+
+To add custom paths to monitoring, edit `/etc/aide/aide.conf` and re-initialize the baseline.
+
+### Auditd
+
+Custom audit rules track security-relevant events:
+
+| Rule | What it tracks |
+|---|---|
+| `sudo_usage` | All sudo invocations by non-root users |
+| `su_usage` | All su invocations |
+| `passwd_changes` | Changes to `/etc/passwd`, `/etc/shadow`, `/etc/group` |
+| `sshd_config` | SSH configuration changes |
+| `ufw_changes` | Firewall rule changes |
+| `cron_changes` | Cron job modifications |
+
+Rules are set to immutable (`-e 2`) — auditing cannot be disabled without a reboot.
+
+```bash
+# View all active audit rules
+sudo auditctl -l
+
+# Search for specific events
+sudo ausearch -k sudo_usage --start today
+
+# Full audit log
+sudo journalctl -u auditd --no-pager -n 100
+```
+
+### Backup Restore
+
+If you need to restore from backup:
+
+```bash
+# List available snapshots
+sudo bash -c 'source /root/.restic-env && restic snapshots'
+
+# Restore a specific snapshot to a temp directory
+sudo bash -c 'source /root/.restic-env && restic restore latest --target /tmp/restore'
+
+# Restore specific files
+sudo bash -c 'source /root/.restic-env && restic restore latest --target / --include /etc/ssh/'
+```
+
+**If the backup password is lost**, the backups are unrecoverable. The password exists only in `/root/.restic-env` on the server.
+
+### Cron Job Failure Handling
+
+All cron jobs log to syslog. If a job fails:
+
+- **backup-server.sh**: Logs errors to `restic-backup` syslog tag. If signal-cli is linked, sends a failure alert.
+- **aide-check.sh**: Only alerts if changes are detected — silence means no changes (healthy).
+- **squid-denied-alert.sh**: Only alerts if blocked requests exist — silence means nothing was blocked.
+
+```bash
+# Check backup logs
+sudo journalctl -t restic-backup --no-pager -n 20
+
+# Check all cron execution
+sudo grep CRON /var/log/syslog | tail -20
+
+# Check signal-cli alert delivery
+sudo journalctl -t signal-alert --no-pager -n 20
+```
+
 ## Automated Jobs
 
 | Schedule | Job | Details |
 |---|---|---|
+| Every 5 min | `squid-denied-alert.sh` | Signal alert for blocked outbound requests |
 | Nightly 2am | `backup-server.sh` | Restic backup of system configs to S3 |
 | Nightly 3am | `aide-check.sh` | File integrity check, alerts on changes |
 | Nightly 3am | `unattended-upgrades` | Security patches, auto-reboot if needed |
@@ -385,7 +677,7 @@ sudo tailscale up --ssh --accept-routes
 Run the bootstrap script first: `cd bootstrap && ./init-remote-state.sh`
 
 **signal-cli not working:**
-Check Java is installed (`java -version`) and signal-cli is linked (`signal-cli -a "+YOUR_NUMBER" listAccounts`).
+See [Signal Alerts > Troubleshooting](#troubleshooting-2) for detailed steps.
 
 **Backup failed:**
 ```bash

@@ -18,5 +18,8 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 # API credentials (uncomment when enabling openclaw in cloud-init.yaml)
 # openclaw_api_key  = "sk-ant-xxxxx"
 
-# Optional: restrict SSH during initial setup
+# SSH access: set to false for Tailscale-only (no public SSH at all)
+# enable_public_ssh = false
+
+# Optional: restrict public SSH to specific IPs during initial setup
 # allowed_ssh_ips   = ["1.2.3.4/32"]

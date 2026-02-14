@@ -3,6 +3,11 @@ docs/
 
 # Claude Code
 .claude/
+CLAUDE.md
+
+# Terraform state (contains secrets)
+*.tfstate
+*.tfstate.backup
 
 # OS
 .DS_Store

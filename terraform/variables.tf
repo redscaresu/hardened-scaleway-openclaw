@@ -28,8 +28,14 @@ variable "admin_username" {
   default     = "admin"
 }
 
+variable "enable_public_ssh" {
+  description = "Allow SSH via public IP (set to false for Tailscale-only access)"
+  type        = bool
+  default     = true
+}
+
 variable "allowed_ssh_ips" {
-  description = "IP addresses allowed to SSH (CIDR notation)"
+  description = "IP addresses allowed to SSH (CIDR notation, only used when enable_public_ssh = true)"
   type        = list(string)
   default     = [] # Empty = allow from anywhere (before Tailscale setup)
 }
