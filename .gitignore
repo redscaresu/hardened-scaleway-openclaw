@@ -6,13 +6,3 @@ docs/
 
 # OS
 .DS_Store
-
-# Terraform
-terraform/.terraform/
-terraform/*.tfstate
-terraform/*.tfstate.backup
-terraform/tfplan
-terraform/.terraform.lock.hcl
-terraform/.env.terraform
-terraform/terraform.tfvars
-terraform/backend-config.tf
