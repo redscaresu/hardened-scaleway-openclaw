@@ -1,8 +1,6 @@
-# Openclaw Infrastructure
+# Terraform Configuration
 
-Hardened server deployment on Scaleway using Terraform. Deploys a security-hardened Ubuntu 24.04 instance with zero-trust networking via Tailscale, automated backups, file integrity monitoring, and Signal-based alerts.
-
-**Cost:** ~EUR 10-15/month (DEV1-S)
+Detailed setup, security documentation, and operational guide. For a quick overview, see the [root README](../README.md).
 
 ## What Gets Deployed
 
@@ -361,14 +359,4 @@ sudo bash -c 'source /root/.restic-env && restic snapshots'
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss changes before submitting a PR.
-
-When working on the Terraform configuration:
-- Run `terraform fmt` before committing
-- Run `terraform validate` to check for errors
-- Never commit files containing credentials (check `.gitignore`)
-- Test changes with `terraform plan` before applying
-
-## License
-
-MIT
+See [contributing guidelines](../README.md#contributing) in the root README.
