@@ -15,6 +15,7 @@ resource "scaleway_iam_api_key" "backup" {
 }
 
 # Policy to allow access to backup bucket
+# project_id is read from the security group (inherits provider's default project)
 resource "scaleway_iam_policy" "backup" {
   count       = var.enable_backups ? 1 : 0
   name        = "${var.instance_name}-backup-policy"
@@ -23,7 +24,7 @@ resource "scaleway_iam_policy" "backup" {
   application_id = scaleway_iam_application.backup[0].id
 
   rule {
+    project_ids          = [scaleway_instance_security_group.openclaw.project_id]
     permission_set_names = ["ObjectStorageFullAccess"]
-    # Scope to specific bucket (requires bucket ARN)
   }
 }
