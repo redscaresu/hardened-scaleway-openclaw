@@ -1,10 +1,7 @@
 #cloud-config
 
-# Hardened server provisioning - infrastructure only
-# Openclaw app sections are commented out below. To enable:
-#   1. Uncomment the openclaw sections in this file (search for "OPENCLAW:")
-#   2. Add openclaw_api_key to templatefile() params in main.tf
-#   3. Set openclaw_api_key in terraform.tfvars
+# Hardened server provisioning with openclaw app
+# Openclaw gateway binds to Tailscale interface only (port 18789)
 
 users:
   - name: ${admin_username}
@@ -220,6 +217,7 @@ write_files:
         /etc/ssh/sshd_config.d/ \
         /etc/sysctl.d/ \
         /etc/openclaw-alerts.conf \
+        /var/lib/openclaw/ \
         2>&1 | logger -t restic-backup
 
       # Prune old backups
@@ -285,54 +283,101 @@ write_files:
       $DENIED"
     permissions: '0755'
 
-  # --- OPENCLAW: Uncomment the sections below to install the openclaw app ---
+  # OPENCLAW: Environment variables
+  - path: /var/lib/openclaw/.env
+    content: |
+      NODE_ENV=production
+      OPENCLAW_GATEWAY_TOKEN=${openclaw_gateway_token}
+      ANTHROPIC_API_KEY=${anthropic_api_key}
+      OPENAI_API_KEY=${openai_api_key}
+      TELEGRAM_BOT_TOKEN=${telegram_bot_token}
+      OPENCLAW_STATE_DIR=/var/lib/openclaw
+    permissions: '0600'
+    owner: root:root
 
-  # # OPENCLAW: Environment variables
-  # - path: /var/lib/openclaw/.env
-  #   content: |
-  #     NODE_ENV=production
-  #     ANTHROPIC_API_KEY=YOUR_API_KEY  # use $${openclaw_api_key} after adding to main.tf templatefile
-  #   permissions: '0600'
-  #   owner: openclaw:openclaw
+  # OPENCLAW: Systemd service
+  - path: /etc/systemd/system/openclaw.service
+    content: |
+      [Unit]
+      Description=Openclaw AI Assistant
+      After=network-online.target
+      Wants=network-online.target
 
-  # # OPENCLAW: Systemd service
-  # - path: /etc/systemd/system/openclaw.service
-  #   content: |
-  #     [Unit]
-  #     Description=Openclaw AI Assistant
-  #     After=network-online.target
-  #     Wants=network-online.target
-  #
-  #     [Service]
-  #     Type=simple
-  #     User=openclaw
-  #     Group=openclaw
-  #     WorkingDirectory=/opt/openclaw
-  #     Environment="NODE_ENV=production"
-  #     EnvironmentFile=/var/lib/openclaw/.env
-  #     ExecStart=/usr/bin/pnpm start
-  #     Restart=always
-  #     RestartSec=10
-  #     StandardOutput=append:/var/log/openclaw/output.log
-  #     StandardError=append:/var/log/openclaw/error.log
-  #
-  #     # Security hardening
-  #     NoNewPrivileges=true
-  #     PrivateTmp=true
-  #     ProtectSystem=strict
-  #     ProtectHome=true
-  #     ReadWritePaths=/var/lib/openclaw /var/log/openclaw
-  #     CapabilityBoundingSet=
-  #     ProtectKernelTunables=true
-  #     ProtectControlGroups=true
-  #     RestrictRealtime=true
-  #     RestrictNamespaces=true
-  #     SystemCallFilter=@system-service
-  #     SystemCallErrorNumber=EPERM
-  #
-  #     [Install]
-  #     WantedBy=multi-user.target
-  #   permissions: '0644'
+      [Service]
+      Type=simple
+      User=openclaw
+      Group=openclaw
+      WorkingDirectory=/opt/openclaw
+      Environment="NODE_ENV=production"
+      EnvironmentFile=/var/lib/openclaw/.env
+      ExecStart=/usr/bin/node /opt/openclaw/openclaw.mjs gateway --bind loopback --port 18789 --allow-unconfigured
+      Restart=always
+      RestartSec=10
+      StandardOutput=append:/var/log/openclaw/output.log
+      StandardError=append:/var/log/openclaw/error.log
+
+      # Security hardening
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/openclaw /var/log/openclaw
+      CapabilityBoundingSet=
+      ProtectKernelTunables=true
+      ProtectControlGroups=true
+      RestrictRealtime=true
+      RestrictNamespaces=true
+      SystemCallFilter=@system-service
+      SystemCallErrorNumber=EPERM
+
+      [Install]
+      WantedBy=multi-user.target
+    permissions: '0644'
+
+  # Post-deploy Telegram pairing helper
+  # Run: sudo pair-telegram.sh
+  # Then send /start to the bot on Telegram and paste the code
+  - path: /usr/local/bin/pair-telegram.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      OC_HOME="/var/lib/openclaw"
+      OC_CLI="/usr/bin/node /opt/openclaw/openclaw.mjs"
+      TOKEN=$(grep OPENCLAW_GATEWAY_TOKEN "$OC_HOME/.env" | cut -d= -f2)
+
+      echo "=== Openclaw Telegram Pairing ==="
+      echo ""
+      echo "1. Open Telegram and message your bot with /start"
+      echo "2. The bot will reply with a pairing code"
+      echo "3. Paste the code below"
+      echo ""
+      read -p "Pairing code: " CODE
+
+      if [ -z "$CODE" ]; then
+        echo "ERROR: No code provided."
+        exit 1
+      fi
+
+      # OPENCLAW_STATE_DIR ensures the CLI uses the same paths as the gateway
+      # (without it, CLI defaults to $HOME/.openclaw/ while gateway uses $OPENCLAW_STATE_DIR/)
+      HOME="$OC_HOME" OPENCLAW_STATE_DIR="$OC_HOME" sudo -u openclaw \
+        OPENCLAW_GATEWAY_TOKEN="$TOKEN" \
+        $OC_CLI pairing approve telegram "$CODE"
+
+      # Restart gateway to pick up the approved pairing
+      echo "Restarting openclaw gateway..."
+      systemctl restart openclaw
+      sleep 5
+
+      if systemctl is-active --quiet openclaw; then
+        echo ""
+        echo "Done! Send a message to the bot to verify."
+      else
+        echo "ERROR: openclaw service failed to restart."
+        exit 1
+      fi
+    permissions: '0755'
 
   # Post-deploy signal-cli linking helper
   # Run: sudo link-signal.sh
@@ -483,15 +528,15 @@ write_files:
   # NOTE: APT proxy config is written in runcmd AFTER squid starts
   # (write_files runs before package install, so proxy can't be set here)
 
-  # # OPENCLAW: Health check script
-  # - path: /usr/local/bin/openclaw-health.sh
-  #   content: |
-  #     #!/bin/bash
-  #     if ! systemctl is-active --quiet openclaw; then
-  #       /usr/local/bin/send-alert.sh "ALERT: Openclaw is down on $(hostname), restarting..."
-  #       systemctl restart openclaw
-  #     fi
-  #   permissions: '0755'
+  # OPENCLAW: Health check script
+  - path: /usr/local/bin/openclaw-health.sh
+    content: |
+      #!/bin/bash
+      if ! systemctl is-active --quiet openclaw; then
+        /usr/local/bin/send-alert.sh "ALERT: Openclaw is down on $(hostname), restarting..."
+        systemctl restart openclaw
+      fi
+    permissions: '0755'
 
 # Run commands on first boot
 runcmd:
@@ -549,26 +594,50 @@ runcmd:
   - echo "0 3 * * * root /usr/local/bin/aide-check.sh" >> /etc/crontab
   - echo "*/5 * * * * root /usr/local/bin/squid-denied-alert.sh" >> /etc/crontab
 
-  # --- OPENCLAW: Uncomment the sections below to install the openclaw app ---
+  # Create swap file (DEV1-S has 2GB RAM; pnpm build needs more)
+  - |
+    if [ ! -f /swapfile ]; then
+      fallocate -l 2G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
 
-  # # OPENCLAW: Install Node.js and pnpm
-  # - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  # - apt-get install -y nodejs
-  # - npm install -g pnpm
+  # OPENCLAW: Install Node.js 22 and pnpm
+  - |
+    curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+    if [ -s /tmp/nodesource_setup.sh ]; then
+      bash /tmp/nodesource_setup.sh
+    else
+      echo "ERROR: NodeSource setup script download failed" >&2
+      exit 1
+    fi
+    rm -f /tmp/nodesource_setup.sh
+  - apt-get install -y nodejs
+  - |
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "ERROR: npm not found after nodejs install" >&2
+      exit 1
+    fi
+    npm install -g pnpm
 
-  # # OPENCLAW: Create system user with home directory for pnpm cache
-  # - useradd --system --home-dir /var/lib/openclaw --shell /usr/sbin/nologin openclaw
-  # - mkdir -p /opt/openclaw /var/lib/openclaw /var/log/openclaw
-  # - chown openclaw:openclaw /var/lib/openclaw /var/log/openclaw
-  # - chmod 700 /var/lib/openclaw
+  # OPENCLAW: Create system user with home directory for pnpm cache
+  - useradd --system --home-dir /var/lib/openclaw --create-home --shell /usr/sbin/nologin openclaw
+  - mkdir -p /opt/openclaw /var/log/openclaw
+  - chown openclaw:openclaw /var/lib/openclaw /var/log/openclaw
+  - chmod 700 /var/lib/openclaw
+  - chown openclaw:openclaw /var/lib/openclaw/.env
 
-  # # OPENCLAW: Clone and install
-  # - |
-  #   cd /opt
-  #   git clone https://github.com/openclaw/openclaw.git openclaw
-  #   cd openclaw
-  #   chown -R openclaw:openclaw /opt/openclaw
-  #   HOME=/var/lib/openclaw sudo -u openclaw pnpm install
+  # OPENCLAW: Clone and install
+  - |
+    cd /opt
+    git clone https://github.com/openclaw/openclaw.git openclaw
+    cd openclaw
+    chown -R openclaw:openclaw /opt/openclaw
+    HOME=/var/lib/openclaw sudo -u openclaw pnpm install
+    HOME=/var/lib/openclaw sudo -u openclaw pnpm build
+    HOME=/var/lib/openclaw sudo -u openclaw pnpm ui:build
 
   # Start squid proxy
   - systemctl enable squid
@@ -604,6 +673,8 @@ runcmd:
     iptables -A OUTPUT -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT
     # Let signal user through (signal-cli needs direct HTTPS to Signal servers)
     iptables -A OUTPUT -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT
+    # Let openclaw user through (AI API streaming/SSE and Telegram long-polling)
+    iptables -A OUTPUT -m owner --uid-owner openclaw -p tcp --dport 443 -j ACCEPT
     # Block direct HTTP/HTTPS for everyone else
     iptables -A OUTPUT -p tcp --dport 80 -j REJECT
     iptables -A OUTPUT -p tcp --dport 443 -j REJECT
@@ -611,12 +682,13 @@ runcmd:
   # Persist iptables rules via UFW before.rules
   - |
     sed -i '/^COMMIT/i \
-    # Squid proxy enforcement - block direct HTTP/HTTPS for non-root/non-proxy/non-signal\n\
+    # Squid proxy enforcement - block direct HTTP/HTTPS for non-root/non-proxy/non-signal/non-openclaw\n\
     -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 80 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner root -p tcp --dport 80 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT\n\
+    -A ufw-before-output -m owner --uid-owner openclaw -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -p tcp --dport 80 -j REJECT\n\
     -A ufw-before-output -p tcp --dport 443 -j REJECT' /etc/ufw/before.rules
 
@@ -628,9 +700,14 @@ runcmd:
   - systemctl start auditd
   - augenrules --load
 
-  # # OPENCLAW: Enable and start openclaw service
-  # - systemctl enable openclaw
-  # - systemctl start openclaw
+  # OPENCLAW: Configure, enable and start openclaw service
+  - |
+    if [ -n "${telegram_bot_token}" ]; then
+      HOME=/var/lib/openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw sudo -u openclaw /usr/bin/node /opt/openclaw/openclaw.mjs \
+        config set channels.telegram.botToken "${telegram_bot_token}"
+    fi
+  - systemctl enable openclaw
+  - systemctl start openclaw
 
   # Restart SSH with new config (Ubuntu 24.04 uses ssh.service, not sshd)
   - systemctl restart ssh
@@ -644,9 +721,8 @@ runcmd:
   # Reload UFW to apply before.rules changes (squid enforcement + metadata block)
   - ufw reload
 
-  # Set up cron jobs for openclaw health check (uncomment when openclaw is installed)
-  # # OPENCLAW: Health check cron
-  # - echo "*/5 * * * * root /usr/local/bin/openclaw-health.sh" >> /etc/crontab
+  # OPENCLAW: Health check cron
+  - echo "*/5 * * * * root /usr/local/bin/openclaw-health.sh" >> /etc/crontab
 
   # Initialize AIDE baseline (must be last, after all services are configured)
   - aideinit

@@ -46,11 +46,31 @@ variable "tailscale_auth_key" {
   sensitive   = true
 }
 
-variable "openclaw_api_key" {
-  description = "Anthropic/OpenAI API key for openclaw (not needed until openclaw is enabled in cloud-init)"
+variable "openclaw_gateway_token" {
+  description = "Auth token for openclaw gateway web UI (required when binding beyond loopback)"
   type        = string
   sensitive   = true
-  default     = "" # Set in terraform.tfvars when enabling openclaw
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key for openclaw"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key for openclaw"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "telegram_bot_token" {
+  description = "Telegram bot token for openclaw"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "signal_alert_number" {

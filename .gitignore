@@ -9,5 +9,8 @@ CLAUDE.md
 *.tfstate
 *.tfstate.backup
 
+# Local issues
+ISSUES.md
+
 # OS
 .DS_Store

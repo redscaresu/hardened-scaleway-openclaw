@@ -15,8 +15,9 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 #   - tailscale_auth_key   (get from https://login.tailscale.com/admin/settings/keys)
 #   - signal_alert_number  (your phone number in E.164 format, e.g. +15551234567)
 
-# API credentials (uncomment when enabling openclaw in cloud-init.yaml)
-# openclaw_api_key  = "sk-ant-xxxxx"
+# Sensitive credentials — set via .env.terraform (sourced before plan/apply):
+#   TF_VAR_openclaw_gateway_token, TF_VAR_anthropic_api_key,
+#   TF_VAR_openai_api_key, TF_VAR_telegram_bot_token
 
 # SSH access: set to false for Tailscale-only (no public SSH at all)
 # enable_public_ssh = false

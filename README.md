@@ -2,7 +2,7 @@
 
 Production-ready, security-hardened server infrastructure on [Scaleway](https://www.scaleway.com/) using Terraform. One command deploys a fully configured Ubuntu 24.04 instance with zero-trust networking, encrypted backups, intrusion detection, and Signal-based alerting.
 
-Built for running [Openclaw](https://github.com/redscaresu/openclaw), but the hardened base works for any workload.
+Built for running [Openclaw](https://github.com/openclaw/openclaw), but the hardened base works for any workload.
 
 **Cost:** ~EUR 10-15/month (Scaleway DEV1-S)
 
