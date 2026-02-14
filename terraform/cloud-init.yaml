@@ -276,7 +276,7 @@ runcmd:
   - curl -fsSL https://tailscale.com/install.sh | sh
   - |
     if [ -n "${tailscale_auth_key}" ]; then
-      tailscale up --authkey=${tailscale_auth_key} --ssh --accept-routes
+      tailscale up --authkey=${tailscale_auth_key} --ssh --accept-routes --advertise-tags=tag:openclaw
     fi
 
   # Set up cron jobs

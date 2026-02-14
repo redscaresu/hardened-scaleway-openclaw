@@ -99,7 +99,12 @@ ssh-keygen -t ed25519 -C "openclaw-admin" -f ~/.ssh/openclaw_ed25519
 ```
 This creates `~/.ssh/openclaw_ed25519` (private key — keep secret) and `~/.ssh/openclaw_ed25519.pub` (public key — safe to share).
 
-**Tailscale** — install on your local machine from https://tailscale.com/download and log in. Then generate an auth key from https://login.tailscale.com/admin/settings/keys (check "Reusable", optionally "Ephemeral"). You'll be prompted for this during `terraform plan/apply`.
+**Tailscale** — install on your local machine from https://tailscale.com/download and log in. Then:
+
+1. Add the ACL rules (see [Configure Tailscale SSH](#5-configure-tailscale-ssh) for the full policy)
+2. Generate an auth key from https://login.tailscale.com/admin/settings/keys — check "Reusable", optionally "Ephemeral", and **assign the `tag:openclaw` tag** so the server auto-tags on join
+
+You'll be prompted for the auth key during `terraform plan/apply`.
 
 ## Setup
 
