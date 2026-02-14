@@ -161,9 +161,11 @@ Edit `terraform.tfvars` with your values. At minimum set:
 - `ssh_public_key_path` — path to your public key
 - `backup_bucket_name` — the backup bucket name output by the bootstrap script
 
-The following sensitive variables are **prompted during plan/apply** (not stored in files):
-- `tailscale_auth_key` — from prerequisites
-- `signal_alert_number` — your phone number in E.164 format (e.g. `+15551234567`)
+Edit `.env.terraform` (created by the bootstrap script) and fill in the sensitive variables at the bottom:
+- `TF_VAR_tailscale_auth_key` — from prerequisites
+- `TF_VAR_signal_alert_number` — your phone number in E.164 format (e.g. `+15551234567`)
+
+These are read automatically by Terraform via `source .env.terraform`. The file is gitignored and chmod 600.
 
 ### 4. Deploy
 

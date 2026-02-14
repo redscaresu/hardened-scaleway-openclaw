@@ -57,11 +57,12 @@ cd ..
 # Configure
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars — set admin_username, backup_bucket_name (from bootstrap output)
+# Edit .env.terraform — set TF_VAR_tailscale_auth_key and TF_VAR_signal_alert_number
 
 # Deploy
 source .env.terraform
 terraform init
-terraform plan    # prompted for tailscale_auth_key and signal_alert_number
+terraform plan
 terraform apply
 ```
 

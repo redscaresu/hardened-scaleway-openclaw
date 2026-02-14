@@ -129,6 +129,10 @@ export SCW_DEFAULT_PROJECT_ID="${PROJECT_ID}"
 # For S3 backend
 export AWS_ACCESS_KEY_ID="${SCW_ACCESS_KEY}"
 export AWS_SECRET_ACCESS_KEY="${SCW_SECRET_KEY}"
+
+# Terraform variables (avoids being prompted during plan/apply)
+export TF_VAR_tailscale_auth_key="tskey-auth-REPLACE_ME"
+export TF_VAR_signal_alert_number="+REPLACE_ME"
 EOF
 
 chmod 600 ../.env.terraform
