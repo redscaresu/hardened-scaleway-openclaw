@@ -125,7 +125,6 @@ cat > ../.env.terraform <<EOF
 export SCW_ACCESS_KEY="${SCW_ACCESS_KEY}"
 export SCW_SECRET_KEY="${SCW_SECRET_KEY}"
 export SCW_DEFAULT_PROJECT_ID="${PROJECT_ID}"
-export SCW_DEFAULT_REGION="${REGION}"
 
 # For S3 backend
 export AWS_ACCESS_KEY_ID="${SCW_ACCESS_KEY}"

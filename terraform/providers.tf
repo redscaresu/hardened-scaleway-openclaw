@@ -17,6 +17,6 @@ terraform {
 }
 
 provider "scaleway" {
-  zone   = var.zone
-  region = var.region
+  # Region and zone come from Scaleway CLI config (scw init)
+  # or environment variables (SCW_DEFAULT_REGION, SCW_DEFAULT_ZONE)
 }

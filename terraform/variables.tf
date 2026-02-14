@@ -1,11 +1,5 @@
-variable "region" {
-  description = "Scaleway region"
-  type        = string
-  default     = "fr-par"
-}
-
 variable "zone" {
-  description = "Scaleway availability zone"
+  description = "Scaleway availability zone (overrides CLI config default)"
   type        = string
   default     = "fr-par-1"
 }

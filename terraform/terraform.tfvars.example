@@ -1,7 +1,7 @@
 # Copy this file to terraform.tfvars and fill in your values
 # terraform.tfvars is gitignored for security
 
-region              = "fr-par"
+# Zone for the instance (region comes from scw CLI config)
 zone                = "fr-par-1"
 instance_type       = "DEV1-S"
 instance_name       = "openclaw-prod"
