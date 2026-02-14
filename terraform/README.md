@@ -58,7 +58,7 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 - No secrets in committed files — `terraform.tfvars` and `.env.terraform` are gitignored
 - Sensitive variables (`tailscale_auth_key`, `signal_alert_number`) prompted at plan/apply, never written to disk
 - Scaleway metadata API (`169.254.42.42`) blocked after provisioning via iptables — prevents any process from reading cloud-init secrets
-- Metadata API block persisted across reboots with `iptables-persistent`
+- Metadata API block persisted across reboots via UFW `before.rules`
 - Terraform state stored remotely in a private, versioned S3 bucket — contains secrets, access controlled via Scaleway IAM
 - Restic backup password generated once on first boot — must be saved externally
 

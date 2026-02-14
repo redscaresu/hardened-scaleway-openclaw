@@ -35,7 +35,6 @@ packages:
   - aide
   - auditd
   - restic
-  - iptables-persistent
 
 # Write configuration files
 write_files:
@@ -321,9 +320,9 @@ runcmd:
 
   # Block metadata API - cloud-init user_data contains secrets (tailscale key, backup creds)
   # Any process on the instance could read these via http://169.254.42.42/conf
+  # Persisted via UFW before.rules (iptables-persistent conflicts with ufw)
   - iptables -A OUTPUT -d 169.254.42.42 -j DROP
-  - mkdir -p /etc/iptables
-  - iptables-save > /etc/iptables/rules.v4
+  - sed -i '/^COMMIT/i -A ufw-before-output -d 169.254.42.42 -j DROP' /etc/ufw/before.rules
 
   # Set up cron jobs for openclaw health check (uncomment when openclaw is installed)
   # # OPENCLAW: Health check cron
