@@ -36,7 +36,6 @@ packages:
   - auditd
   - restic
   - iptables-persistent
-  - default-jre-headless
 
 # Write configuration files
 write_files:
@@ -267,12 +266,12 @@ runcmd:
   # Enable unattended upgrades
   - dpkg-reconfigure -plow unattended-upgrades
 
-  # Install signal-cli for alerts (standalone, independent of openclaw)
+  # Install signal-cli native binary for alerts (no Java required)
   - |
     SIGNAL_CLI_VERSION="0.13.12"
-    curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v$${SIGNAL_CLI_VERSION}/signal-cli-$${SIGNAL_CLI_VERSION}-Linux-x86_64.tar.gz" \
+    curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v$${SIGNAL_CLI_VERSION}/signal-cli-$${SIGNAL_CLI_VERSION}-Linux-native.tar.gz" \
       | tar xz -C /opt
-    ln -sf "/opt/signal-cli-$${SIGNAL_CLI_VERSION}/bin/signal-cli" /usr/local/bin/signal-cli
+    ln -sf /opt/signal-cli /usr/local/bin/signal-cli
 
   # Install Tailscale
   - curl -fsSL https://tailscale.com/install.sh | sh
@@ -317,8 +316,8 @@ runcmd:
   # - systemctl enable openclaw
   # - systemctl start openclaw
 
-  # Restart SSH with new config
-  - systemctl restart sshd
+  # Restart SSH with new config (Ubuntu 24.04 uses ssh.service, not sshd)
+  - systemctl restart ssh
 
   # Block metadata API - cloud-init user_data contains secrets (tailscale key, backup creds)
   # Any process on the instance could read these via http://169.254.42.42/conf
