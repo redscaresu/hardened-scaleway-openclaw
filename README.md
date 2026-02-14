@@ -16,6 +16,7 @@ A single Scaleway instance with defense-in-depth security:
 | **SSH** | Key-only auth (ed25519), root login disabled, rate-limited, fail2ban |
 | **Kernel** | SYN flood protection, anti-spoofing, restricted dmesg, hidden kernel pointers |
 | **Monitoring** | AIDE file integrity checks, auditd syscall auditing, prometheus-node-exporter |
+| **App** | Openclaw AI gateway on loopback:18789, Telegram bot integration, health-checked |
 | **Alerts** | Signal messenger notifications for security events and blocked outbound requests |
 | **Backups** | Nightly encrypted backups to S3 via restic (7 daily, 4 weekly, 12 monthly) |
 | **Updates** | Unattended security patches with automatic reboot |
@@ -57,7 +58,8 @@ cd ..
 # Configure
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars — set admin_username, backup_bucket_name (from bootstrap output)
-# Edit .env.terraform — set TF_VAR_tailscale_auth_key and TF_VAR_signal_alert_number
+# Edit .env.terraform — set TF_VAR_tailscale_auth_key, TF_VAR_signal_alert_number,
+#   TF_VAR_openclaw_gateway_token, TF_VAR_anthropic_api_key, TF_VAR_telegram_bot_token
 
 # Deploy
 source .env.terraform
@@ -66,11 +68,11 @@ terraform plan
 terraform apply
 ```
 
-### 4. Verify & Link Signal (after ~5-10 min for cloud-init)
+### 4. Post-Deploy Setup (after ~10-15 min for cloud-init + build)
 
 ```bash
-# SSH in (command shown in terraform output)
-ssh -i ~/.ssh/openclaw_ed25519 <admin_username>@<public_ip>
+# SSH in via Tailscale (hostname shown in terraform output)
+tailscale ssh <admin_username>@<tailscale-hostname>
 
 # Check cloud-init completed
 sudo cloud-init status
@@ -78,14 +80,11 @@ sudo cloud-init status
 # Save backup password (exists only on server — store it safely)
 sudo grep RESTIC_PASSWORD /root/.restic-env
 
-# Verify Tailscale
-sudo tailscale status
-
 # Link Signal alerts (interactive — generates QR code to scan)
 sudo link-signal.sh
 
-# Lock down public SSH once Tailscale works
-sudo ufw delete limit 22/tcp
+# Pair Telegram bot (interactive — paste code from /start)
+sudo pair-telegram.sh
 ```
 
 ## Architecture
@@ -94,12 +93,16 @@ sudo ufw delete limit 22/tcp
                     ┌─────────────────────────────────────┐
                     │         Scaleway DEV1-S             │
                     │         Ubuntu 24.04 LTS            │
-Internet ──SSH──┐   │                                     │
-  (temp)        │   │  ┌──────────┐  ┌────────────────┐   │
-                ├──►│  │ UFW      │  │ fail2ban       │   │
+Tailscale ──────┐   │                                     │
+  VPN (41641)   ├──►│  ┌──────────┐  ┌────────────────┐   │
+                    │  │ UFW      │  │ fail2ban       │   │
                     │  │ firewall │  │ brute-force    │   │
-Tailscale ──────┐   │  └──────────┘  │ protection     │   │
-  VPN (41641)   ├──►│                └────────────────┘   │
+                    │  └──────────┘  └────────────────┘   │
+                    │  ┌──────────┐  ┌────────────────┐   │
+                    │  │ Openclaw │  │ Telegram bot   │   │
+                    │  │ gateway  │  │ integration    │   │
+                    │  │ :18789   │  │                │   │
+                    │  └──────────┘  └────────────────┘   │
                     │  ┌──────────┐  ┌────────────────┐   │
                     │  │ Squid    │──│ Allowlist-only │   │
                     │  │ proxy    │  │ outbound HTTP  │   │
@@ -119,14 +122,21 @@ Tailscale ──────┐   │  └──────────┘  │
                     └─────────────────────────────────────┘
 ```
 
-## Enabling Openclaw
+## Openclaw Integration
 
-The base infrastructure deploys without the application — verify hardening first. To add Openclaw:
+Openclaw is deployed automatically. The gateway binds to loopback only — access it via SSH tunnel:
 
-1. Uncomment all `OPENCLAW:` sections in `terraform/cloud-init.yaml`
-2. Add `openclaw_api_key` to the `templatefile()` params in `terraform/main.tf`
-3. Set `openclaw_api_key` in `terraform.tfvars`
-4. Run `terraform apply` (recreates the instance)
+```bash
+# Open SSH tunnel (keep this terminal open)
+ssh -L 18789:127.0.0.1:18789 <admin_username>@<tailscale-hostname>
+
+# Open in browser
+open http://localhost:18789
+```
+
+Post-deploy setup:
+1. **Link Signal** — `sudo link-signal.sh` (scan QR code with Signal app)
+2. **Pair Telegram** — `sudo pair-telegram.sh` (send `/start` to your bot, paste the code)
 
 ## File Structure
 

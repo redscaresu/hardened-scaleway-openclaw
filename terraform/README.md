@@ -84,7 +84,7 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 
 ### Openclaw App
 
-The openclaw application install is **commented out** in `cloud-init.yaml`. This lets you verify the base infrastructure works before adding the app. See [Enabling Openclaw](#enabling-openclaw) below.
+The [Openclaw](https://github.com/openclaw/openclaw) AI gateway is deployed automatically. It binds to loopback:18789 (access via SSH tunnel) with Telegram bot integration. Post-deploy, run `sudo link-signal.sh` and `sudo pair-telegram.sh`.
 
 ## Prerequisites
 
@@ -609,16 +609,15 @@ sudo journalctl -t signal-alert --no-pager -n 20
 | Nightly 3am | `aide-check.sh` | File integrity check, alerts on changes |
 | Nightly 3am | `unattended-upgrades` | Security patches, auto-reboot if needed |
 
-## Enabling Openclaw
+## Openclaw Details
 
-The openclaw application sections are commented out in `cloud-init.yaml` (search for `OPENCLAW:`). To enable:
+Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). Cloud-init installs Node.js 22, clones the repo, builds with pnpm, and configures Telegram if a bot token is provided.
 
-1. Uncomment all `OPENCLAW:` sections in `cloud-init.yaml`
-2. Add `openclaw_api_key` to the `templatefile()` params in `main.tf`
-3. Set `openclaw_api_key` in `terraform.tfvars`
-4. Run `terraform apply` (this will recreate the instance)
-
-This installs Node.js, creates an `openclaw` system user, clones the repo, and runs it as a systemd service with security hardening (private tmp, protected system, restricted syscalls).
+Access the web UI via SSH tunnel:
+```bash
+ssh -L 18789:127.0.0.1:18789 <admin_username>@<tailscale-hostname>
+open http://localhost:18789
+```
 
 ## File Structure
 
