@@ -293,6 +293,12 @@ write_files:
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       GITHUB_TOKEN=${github_token}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
+      http_proxy=http://127.0.0.1:3128
+      https_proxy=http://127.0.0.1:3128
+      HTTP_PROXY=http://127.0.0.1:3128
+      HTTPS_PROXY=http://127.0.0.1:3128
+      no_proxy=localhost,127.0.0.1
+      NO_PROXY=localhost,127.0.0.1
     permissions: '0600'
     owner: root:root
 
@@ -486,6 +492,13 @@ write_files:
       .nodesource.com
       .npmjs.org
       .npmjs.com
+
+      # AI APIs (for openclaw)
+      .anthropic.com
+      .openai.com
+
+      # Telegram Bot API (for openclaw)
+      .telegram.org
 %{ for domain in squid_extra_domains ~}
 
       ${domain}
@@ -678,22 +691,19 @@ runcmd:
     iptables -A OUTPUT -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT
     # Let signal user through (signal-cli needs direct HTTPS to Signal servers)
     iptables -A OUTPUT -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT
-    # Let openclaw user through (AI API streaming/SSE and Telegram long-polling)
-    iptables -A OUTPUT -m owner --uid-owner openclaw -p tcp --dport 443 -j ACCEPT
-    # Block direct HTTP/HTTPS for everyone else
+    # Block direct HTTP/HTTPS for everyone else (openclaw goes through squid)
     iptables -A OUTPUT -p tcp --dport 80 -j REJECT
     iptables -A OUTPUT -p tcp --dport 443 -j REJECT
 
   # Persist iptables rules via UFW before.rules
   - |
     sed -i '/^COMMIT/i \
-    # Squid proxy enforcement - block direct HTTP/HTTPS for non-root/non-proxy/non-signal/non-openclaw\n\
+    # Squid proxy enforcement - block direct HTTP/HTTPS for non-root/non-proxy/non-signal\n\
     -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 80 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner proxy -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner root -p tcp --dport 80 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -m owner --uid-owner signal -p tcp --dport 443 -j ACCEPT\n\
-    -A ufw-before-output -m owner --uid-owner openclaw -p tcp --dport 443 -j ACCEPT\n\
     -A ufw-before-output -p tcp --dport 80 -j REJECT\n\
     -A ufw-before-output -p tcp --dport 443 -j REJECT' /etc/ufw/before.rules
 

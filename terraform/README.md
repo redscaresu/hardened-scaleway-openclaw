@@ -65,7 +65,7 @@ Detailed setup, security documentation, and operational guide. For a quick overv
 
 **Secrets**
 - No secrets in committed files — `terraform.tfvars` and `.env.terraform` are gitignored
-- Sensitive variables (`tailscale_auth_key`, `signal_alert_number`) passed via environment variables from `.env.terraform` (gitignored, chmod 600)
+- Sensitive variables (`tailscale_auth_key`, `signal_alert_number`, API keys, tokens, `squid_extra_domains`) passed via environment variables from `.env.terraform` (gitignored, chmod 600)
 - Scaleway metadata API (`169.254.42.42`) blocked after provisioning via iptables — prevents any process from reading cloud-init secrets
 - Metadata API block persisted across reboots via UFW `before.rules` (see [Metadata API Blocking](#metadata-api-blocking) for timing details)
 - Terraform state stored remotely in a private, versioned S3 bucket — contains secrets, access controlled via Scaleway IAM
@@ -179,6 +179,11 @@ Edit `terraform.tfvars` with your values. At minimum set:
 Edit `.env.terraform` (created by the bootstrap script) and fill in the sensitive variables at the bottom:
 - `TF_VAR_tailscale_auth_key` — from prerequisites
 - `TF_VAR_signal_alert_number` — your phone number in E.164 format (e.g. `+15551234567`)
+- `TF_VAR_openclaw_gateway_token` — generate with `openssl rand -hex 32`
+- `TF_VAR_anthropic_api_key` — from https://console.anthropic.com/settings/keys
+- `TF_VAR_telegram_bot_token` — from [@BotFather](https://t.me/botfather) on Telegram
+- `TF_VAR_github_token` — from GitHub > Settings > Developer settings > Personal access tokens
+- `TF_VAR_squid_extra_domains` — JSON list of extra proxy domains (e.g. `'[".example.com"]'`)
 
 These are read automatically by Terraform via `source .env.terraform`. The file is gitignored and chmod 600.
 
@@ -279,7 +284,7 @@ Also add a tag owner entry (if not already present):
 "tagOwners": {"tag:openclaw": ["autogroup:admin"]},
 ```
 
-Then go to the **Machines** tab, find your server, and apply the `tag:openclaw` tag.
+If you generated the auth key with `tag:openclaw` assigned (recommended), the server auto-tags on join — no manual tagging needed.
 
 - `check` mode requires browser re-authentication before granting SSH — more secure than `accept`
 - `autogroup:nonroot` prevents root SSH, matching the server-side hardening
@@ -436,6 +441,9 @@ The default allowlist covers essential services only:
 | **GitHub** | `.github.com`, `.githubusercontent.com` |
 | **Scaleway** | `.scw.cloud`, `.scaleway.com` |
 | **Node.js** | `.nodesource.com`, `.npmjs.org`, `.npmjs.com` |
+| **AI APIs** | `.anthropic.com`, `.openai.com` |
+| **Telegram** | `.telegram.org` |
+| **Extra** | User-defined via `TF_VAR_squid_extra_domains` (sensitive) |
 
 ### Managing the Allowlist
 
@@ -461,10 +469,11 @@ Direct HTTP/HTTPS bypassing the proxy is blocked at the kernel level via owner-b
 - **proxy** (squid) user: allowed direct HTTP/HTTPS (squid's own outbound connections)
 - **root**: allowed direct HTTP/HTTPS (needed for Tailscale, systemd services)
 - **signal** user: allowed direct HTTPS only (signal-cli needs direct access to Signal servers)
+- **openclaw** user: must go through squid (AI API, Telegram, and tool domains controlled via allowlist)
 - **Everyone else**: must go through squid on port 3128, direct 80/443 is REJECTED
 - Rules are written to `/etc/ufw/before.rules` and loaded via `ufw reload` — persist across reboots
 
-**Scope:** The proxy enforces filtering for non-privileged users. System users (root, proxy, signal) have direct outbound access as required by their services. DNS queries are not filtered by squid (they use UDP, not HTTP).
+**Scope:** The proxy enforces filtering for all non-system users, including openclaw. Only root, proxy (squid), and signal have direct outbound access as required by their services. Openclaw's outbound traffic is fully controlled by the squid allowlist. DNS queries are not filtered by squid (they use UDP, not HTTP).
 
 ### Blocked Request Alerts
 
@@ -611,7 +620,7 @@ sudo journalctl -t signal-alert --no-pager -n 20
 
 ## Openclaw Details
 
-Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). Cloud-init installs Node.js 22, clones the repo, builds with pnpm, and configures Telegram if a bot token is provided.
+Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). All outbound traffic from openclaw is routed through the squid proxy — it cannot access any domain not on the allowlist. Core API domains (`.anthropic.com`, `.openai.com`, `.telegram.org`) are in the base allowlist; additional domains are added via `TF_VAR_squid_extra_domains` (sensitive). Cloud-init installs Node.js 22, clones the repo, builds with pnpm, and configures Telegram if a bot token is provided.
 
 Access the web UI via SSH tunnel:
 ```bash

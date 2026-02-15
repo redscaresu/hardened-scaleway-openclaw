@@ -29,7 +29,7 @@ A single Scaleway instance with defense-in-depth security:
 ### 1. Prerequisites
 
 - [Scaleway account](https://console.scaleway.com/register) with payment method
-- [Tailscale account](https://login.tailscale.com/start) (free tier)
+- [Tailscale account](https://login.tailscale.com/start) (free tier) — create a `tag:openclaw` tag in [ACLs](https://login.tailscale.com/admin/acls) and generate an auth key with that tag so new instances auto-tag on join
 - [Scaleway CLI](https://github.com/scaleway/scaleway-cli) and [Terraform](https://developer.hashicorp.com/terraform/install) (>= 1.0)
 
 ```bash
