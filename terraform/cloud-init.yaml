@@ -292,6 +292,7 @@ write_files:
       OPENAI_API_KEY=${openai_api_key}
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       GITHUB_TOKEN=${github_token}
+      DEEPSEEK_API_KEY=${deepseek_api_key}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
       http_proxy=http://127.0.0.1:3128
       https_proxy=http://127.0.0.1:3128
@@ -497,6 +498,7 @@ write_files:
       .anthropic.com
       .openai.com
       .openrouter.ai
+      .deepseek.com
 
       # Telegram Bot API (for openclaw)
       .telegram.org
@@ -648,11 +650,12 @@ runcmd:
   - chmod 700 /var/lib/openclaw
   - chown openclaw:openclaw /var/lib/openclaw/.env
 
-  # OPENCLAW: Clone and install
+  # OPENCLAW: Clone and install (pinned version)
   - |
     cd /opt
     git clone https://github.com/openclaw/openclaw.git openclaw
     cd openclaw
+    git checkout ${openclaw_version}
     chown -R openclaw:openclaw /opt/openclaw
     HOME=/var/lib/openclaw sudo -u openclaw pnpm install
     HOME=/var/lib/openclaw sudo -u openclaw pnpm build

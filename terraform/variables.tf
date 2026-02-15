@@ -80,6 +80,19 @@ variable "github_token" {
   default     = ""
 }
 
+variable "deepseek_api_key" {
+  description = "DeepSeek API key for openclaw (fallback/subagent model)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "openclaw_version" {
+  description = "Openclaw version tag to install (e.g. v2026.2.14)"
+  type        = string
+  default     = "v2026.2.14"
+}
+
 variable "squid_extra_domains" {
   description = "Additional domains to allow through the squid proxy (e.g. .example.com)"
   type        = list(string)
