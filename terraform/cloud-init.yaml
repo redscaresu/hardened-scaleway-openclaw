@@ -496,6 +496,7 @@ write_files:
       # AI APIs (for openclaw)
       .anthropic.com
       .openai.com
+      .openrouter.ai
 
       # Telegram Bot API (for openclaw)
       .telegram.org
