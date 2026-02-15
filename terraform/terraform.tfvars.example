@@ -17,7 +17,8 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 
 # Sensitive credentials — set via .env.terraform (sourced before plan/apply):
 #   TF_VAR_openclaw_gateway_token, TF_VAR_anthropic_api_key,
-#   TF_VAR_openai_api_key, TF_VAR_telegram_bot_token
+#   TF_VAR_openai_api_key, TF_VAR_telegram_bot_token, TF_VAR_github_token
+#   TF_VAR_squid_extra_domains (JSON list, e.g. '[".example.com", ".other.com"]')
 
 # SSH access: set to false for Tailscale-only (no public SSH at all)
 # enable_public_ssh = false

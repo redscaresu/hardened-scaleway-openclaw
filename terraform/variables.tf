@@ -73,6 +73,20 @@ variable "telegram_bot_token" {
   default     = ""
 }
 
+variable "github_token" {
+  description = "GitHub personal access token for openclaw"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "squid_extra_domains" {
+  description = "Additional domains to allow through the squid proxy (e.g. .example.com)"
+  type        = list(string)
+  sensitive   = true
+  default     = []
+}
+
 variable "signal_alert_number" {
   description = "Signal phone number for alerts (E.164 format, e.g. +15551234567)"
   type        = string

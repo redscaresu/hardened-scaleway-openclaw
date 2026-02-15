@@ -133,6 +133,12 @@ export AWS_SECRET_ACCESS_KEY="${SCW_SECRET_KEY}"
 # Terraform variables (avoids being prompted during plan/apply)
 export TF_VAR_tailscale_auth_key="tskey-auth-REPLACE_ME"
 export TF_VAR_signal_alert_number="+REPLACE_ME"
+export TF_VAR_openclaw_gateway_token="REPLACE_ME"
+export TF_VAR_anthropic_api_key="REPLACE_ME"
+export TF_VAR_openai_api_key="REPLACE_ME"
+export TF_VAR_telegram_bot_token="REPLACE_ME"
+export TF_VAR_github_token="REPLACE_ME"
+export TF_VAR_squid_extra_domains='[]'
 EOF
 
 chmod 600 ../.env.terraform

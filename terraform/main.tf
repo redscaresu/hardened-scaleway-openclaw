@@ -39,6 +39,8 @@ resource "scaleway_instance_server" "openclaw" {
       anthropic_api_key      = var.anthropic_api_key
       openai_api_key         = var.openai_api_key
       telegram_bot_token     = var.telegram_bot_token
+      github_token           = var.github_token
+      squid_extra_domains    = var.squid_extra_domains
       backup_bucket          = var.backup_bucket_name
       aws_access_key         = var.enable_backups ? scaleway_iam_api_key.backup[0].access_key : ""
       aws_secret_key         = var.enable_backups ? scaleway_iam_api_key.backup[0].secret_key : ""

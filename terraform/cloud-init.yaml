@@ -291,6 +291,7 @@ write_files:
       ANTHROPIC_API_KEY=${anthropic_api_key}
       OPENAI_API_KEY=${openai_api_key}
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
+      GITHUB_TOKEN=${github_token}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
     permissions: '0600'
     owner: root:root
@@ -481,10 +482,14 @@ write_files:
       .scw.cloud
       .scaleway.com
 
-      # Node.js (for openclaw, when enabled)
+      # Node.js
       .nodesource.com
       .npmjs.org
       .npmjs.com
+%{ for domain in squid_extra_domains ~}
+
+      ${domain}
+%{ endfor ~}
     permissions: '0644'
 
   # Squid proxy configuration - forward proxy with allowlist
