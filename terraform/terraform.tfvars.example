@@ -14,6 +14,10 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 # Openclaw version (pinned for reproducibility)
 # openclaw_version  = "v2026.2.14"
 
+# Deploy optimised multi-model config (Sonnet primary, DeepSeek fallback/subagents,
+# free Llama heartbeat every 60m). Set to false for vanilla openclaw defaults.
+# openclaw_optimised_config = true
+
 # The following are prompted during plan/apply for security (not stored in files):
 #   - tailscale_auth_key   (get from https://login.tailscale.com/admin/settings/keys)
 #   - signal_alert_number  (your phone number in E.164 format, e.g. +15551234567)

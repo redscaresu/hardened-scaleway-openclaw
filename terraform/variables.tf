@@ -93,6 +93,12 @@ variable "openclaw_version" {
   default     = "v2026.2.14"
 }
 
+variable "openclaw_optimised_config" {
+  description = "Deploy optimised openclaw config (multi-model, subagents, heartbeat on free Llama model)"
+  type        = bool
+  default     = true
+}
+
 variable "squid_extra_domains" {
   description = "Additional domains to allow through the squid proxy (e.g. .example.com)"
   type        = list(string)

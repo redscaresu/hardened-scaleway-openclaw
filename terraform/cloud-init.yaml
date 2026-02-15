@@ -725,6 +725,49 @@ runcmd:
       HOME=/var/lib/openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw sudo -u openclaw /usr/bin/node /opt/openclaw/openclaw.mjs \
         config set channels.telegram.botToken "${telegram_bot_token}"
     fi
+  # OPENCLAW: Write optimised config (multi-model, subagents, free heartbeat)
+%{ if openclaw_optimised_config ~}
+  - |
+    cat > /var/lib/openclaw/openclaw.json << 'OCJSON'
+    {
+      "agents": {
+        "defaults": {
+          "model": {
+            "primary": "anthropic/claude-sonnet-4-5",
+            "fallbacks": ["deepseek/deepseek-reasoner"]
+          },
+          "models": {
+            "anthropic/claude-sonnet-4-5": { "alias": "sonnet" },
+            "deepseek/deepseek-chat": { "alias": "ds" }
+          },
+          "subagents": {
+            "model": "deepseek/deepseek-reasoner",
+            "maxConcurrent": 1,
+            "archiveAfterMinutes": 60
+          },
+          "heartbeat": {
+            "every": "60m",
+            "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+          }
+        }
+      },
+      "commands": {
+        "native": "auto",
+        "nativeSkills": "auto"
+      },
+      "plugins": {
+        "entries": {
+          "telegram": {
+            "enabled": true
+          }
+        }
+      }
+    }
+    OCJSON
+    chown openclaw:openclaw /var/lib/openclaw/openclaw.json
+    chmod 600 /var/lib/openclaw/openclaw.json
+%{ endif ~}
+
   - systemctl enable openclaw
   - systemctl start openclaw
 
