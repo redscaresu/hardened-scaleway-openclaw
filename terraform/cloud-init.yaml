@@ -36,6 +36,7 @@ packages:
   - openjdk-21-jre-headless
   - haveged
   - qrencode
+  - sqlite3
 
 # Write configuration files
 write_files:
