@@ -294,6 +294,7 @@ write_files:
       GITHUB_TOKEN=${github_token}
       DEEPSEEK_API_KEY=${deepseek_api_key}
       OPENROUTER_API_KEY=${openrouter_key}
+      BRAVE_API_KEY=${brave_api_key}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
       http_proxy=http://127.0.0.1:3128
       https_proxy=http://127.0.0.1:3128
@@ -500,6 +501,9 @@ write_files:
       .openai.com
       .openrouter.ai
       .deepseek.com
+
+      # Brave Search API
+      .brave.com
 
       # Telegram Bot API (for openclaw)
       .telegram.org

@@ -87,6 +87,13 @@ variable "deepseek_api_key" {
   default     = ""
 }
 
+variable "brave_api_key" {
+  description = "Brave Search API key for openclaw web search"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "openrouter_key" {
   description = "OpenRouter API key for openclaw (free Llama heartbeat model)"
   type        = string

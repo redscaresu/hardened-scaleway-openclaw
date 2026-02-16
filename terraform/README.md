@@ -442,7 +442,7 @@ The default allowlist covers essential services only:
 | **GitHub** | `.github.com`, `.githubusercontent.com` |
 | **Scaleway** | `.scw.cloud`, `.scaleway.com` |
 | **Node.js** | `.nodesource.com`, `.npmjs.org`, `.npmjs.com` |
-| **AI APIs** | `.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.deepseek.com` |
+| **AI APIs** | `.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.deepseek.com`, `.brave.com` |
 | **Telegram** | `.telegram.org` |
 | **Extra** | User-defined via `TF_VAR_squid_extra_domains` (sensitive) |
 

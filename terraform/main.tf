@@ -41,6 +41,7 @@ resource "scaleway_instance_server" "openclaw" {
       telegram_bot_token        = var.telegram_bot_token
       github_token              = var.github_token
       deepseek_api_key          = var.deepseek_api_key
+      brave_api_key             = var.brave_api_key
       openrouter_key            = var.openrouter_key
       openclaw_version          = var.openclaw_version
       openclaw_optimised_config = var.openclaw_optimised_config
