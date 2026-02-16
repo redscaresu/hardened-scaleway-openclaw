@@ -15,7 +15,7 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 # openclaw_version  = "v2026.2.14"
 
 # Deploy optimised multi-model config (Sonnet primary, DeepSeek fallback/subagents,
-# free Llama heartbeat every 120m). Set to false for vanilla openclaw defaults.
+# Gemini Flash Lite heartbeat every 600m). Set to false for vanilla openclaw defaults.
 # openclaw_optimised_config = true
 
 # The following are prompted during plan/apply for security (not stored in files):

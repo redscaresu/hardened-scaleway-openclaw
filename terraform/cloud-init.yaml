@@ -743,8 +743,11 @@ runcmd:
             "archiveAfterMinutes": 60
           },
           "heartbeat": {
-            "every": "120m",
-            "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+            "every": "600m",
+            "model": "openrouter/google/gemini-2.5-flash-lite"
+          },
+          "compaction": {
+            "reserveTokensFloor": 4000
           }
         }
       },
