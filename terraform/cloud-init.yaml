@@ -742,6 +742,10 @@ runcmd:
             "primary": "anthropic/claude-sonnet-4-5",
             "fallbacks": ["deepseek/deepseek-reasoner"]
           },
+          "models": {
+            "anthropic/claude-sonnet-4-5": {},
+            "deepseek/deepseek-reasoner": {}
+          },
           "subagents": {
             "model": "deepseek/deepseek-reasoner",
             "maxConcurrent": 1,
