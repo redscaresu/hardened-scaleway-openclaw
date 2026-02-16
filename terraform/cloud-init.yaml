@@ -745,9 +745,6 @@ runcmd:
           "heartbeat": {
             "every": "120m",
             "model": "openrouter/google/gemini-2.5-flash-lite"
-          },
-          "compaction": {
-            "reserveTokensFloor": 4000
           }
         }
       },
