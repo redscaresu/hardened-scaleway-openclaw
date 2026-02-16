@@ -620,7 +620,22 @@ sudo journalctl -t signal-alert --no-pager -n 20
 
 ## Openclaw Details
 
-Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). All outbound traffic from openclaw is routed through the squid proxy — it cannot access any domain not on the allowlist. Core API domains (`.anthropic.com`, `.openai.com`, `.telegram.org`) are in the base allowlist; additional domains are added via `TF_VAR_squid_extra_domains` (sensitive). Cloud-init installs Node.js 22, clones the repo, builds with pnpm, and configures Telegram if a bot token is provided.
+Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). The version is pinned via `openclaw_version` (default `v2026.2.14`) for reproducible deploys.
+
+All outbound traffic from openclaw is routed through the squid proxy — it cannot access any domain not on the allowlist. Core API domains (`.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.deepseek.com`, `.telegram.org`) are in the base allowlist; additional domains are added via `TF_VAR_squid_extra_domains` (sensitive).
+
+### Optimised Config
+
+When `openclaw_optimised_config = true` (default), a multi-model config is deployed on first boot:
+
+| Role | Model | Cost |
+|---|---|---|
+| **Primary** | `anthropic/claude-sonnet-4-5` (alias: `sonnet`) | Paid |
+| **Fallback** | `deepseek/deepseek-reasoner` | Paid |
+| **Subagents** | `deepseek/deepseek-reasoner` (max 1 concurrent) | Paid |
+| **Heartbeat** | `openrouter/meta-llama/llama-3.3-70b-instruct:free` (every 60m) | Free |
+
+Model alias `ds` is available for `deepseek/deepseek-chat`. Set `openclaw_optimised_config = false` for vanilla defaults.
 
 Access the web UI via SSH tunnel:
 ```bash
@@ -664,6 +679,126 @@ terraform apply
 
 # Destroy everything (deletes the server!)
 source .env.terraform && terraform destroy
+```
+
+## Useful Commands
+
+Two ways to SSH in:
+- `tailscale ssh <admin>@<hostname>` — Tailscale SSH (no keys needed, authenticates via Tailscale identity)
+- `ssh <admin>@<hostname>.tail0010be.ts.net` — standard SSH over Tailscale network (uses SSH keys, supports `-L` port forwarding for the web UI tunnel)
+
+### Tailscale
+
+```bash
+# Check Tailscale status
+tailscale status
+
+# See all devices on your tailnet
+tailscale status --peers
+
+# Check Tailscale IP
+tailscale ip -4
+```
+
+### Openclaw
+
+```bash
+# Service status
+sudo systemctl status openclaw
+
+# Restart openclaw (picks up .env and config changes)
+sudo systemctl restart openclaw
+
+# Stop / start
+sudo systemctl stop openclaw
+sudo systemctl start openclaw
+
+# Check gateway is listening
+sudo ss -tlnp | grep 18789
+
+# View app output log
+sudo tail -30 /var/log/openclaw/output.log
+
+# View app error log
+sudo tail -30 /var/log/openclaw/error.log
+
+# View config
+sudo cat /var/lib/openclaw/openclaw.json
+
+# View environment variables
+sudo cat /var/lib/openclaw/.env
+
+# Check version
+sudo -u openclaw node /opt/openclaw/openclaw.mjs --version
+
+# Run doctor (validates config)
+sudo -u openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw node /opt/openclaw/openclaw.mjs doctor
+
+# Fix invalid config keys
+sudo -u openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw node /opt/openclaw/openclaw.mjs doctor --fix
+
+# View heartbeat file
+sudo cat /var/lib/openclaw/.openclaw/workspace/HEARTBEAT.md
+
+# Kill stale gateway processes (if port 18789 is stuck)
+sudo pkill -f openclaw-gateway && sudo systemctl start openclaw
+```
+
+### Squid Proxy
+
+```bash
+# View allowed domains
+cat /etc/squid/allowed-domains.txt
+
+# Add a domain (prefix with . for all subdomains)
+echo ".example.com" | sudo tee -a /etc/squid/allowed-domains.txt
+sudo systemctl reload squid
+
+# View recent proxy traffic
+sudo tail -30 /var/log/squid/access.log
+
+# Check for blocked (denied) requests
+sudo grep 'TCP_DENIED' /var/log/squid/access.log | tail -20
+
+# Check Anthropic API calls (useful for monitoring heartbeat cost)
+sudo grep 'anthropic' /var/log/squid/access.log | tail -10
+
+# Count API calls by domain today
+sudo awk '{print $7}' /var/log/squid/access.log | sort | uniq -c | sort -rn | head -10
+
+# Reload config after allowlist changes
+sudo systemctl reload squid
+```
+
+### System
+
+```bash
+# Cloud-init status (was provisioning successful?)
+sudo cloud-init status
+
+# Cloud-init output log (full provisioning log)
+sudo tail -50 /var/log/cloud-init-output.log
+
+# Memory and load
+free -h && uptime
+
+# Disk usage
+df -h /
+
+# Check running services
+sudo systemctl list-units --type=service --state=running
+
+# Check firewall rules
+sudo ufw status verbose
+
+# Check iptables outbound rules
+sudo iptables -L OUTPUT -n --line-numbers
+
+# View recent security alerts
+sudo journalctl -t signal-alert --no-pager -n 20
+
+# Check backups
+sudo journalctl -t restic-backup --no-pager -n 20
 ```
 
 ## Troubleshooting
