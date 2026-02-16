@@ -634,7 +634,7 @@ When `openclaw_optimised_config = true` (default), a multi-model config is deplo
 | **Primary** | `anthropic/claude-sonnet-4-5` | Paid |
 | **Fallback** | `deepseek/deepseek-reasoner` | Paid |
 | **Subagents** | `deepseek/deepseek-reasoner` (max 1 concurrent) | Paid |
-| **Heartbeat** | `openrouter/google/gemini-2.5-flash-lite` (every 600m) | ~$0 |
+| **Heartbeat** | `openrouter/google/gemini-2.5-flash-lite` (every 120m) | ~$0 |
 
 Requires `TF_VAR_openrouter_key` in `.env.terraform` for the heartbeat model. Set `openclaw_optimised_config = false` for vanilla defaults.
 
