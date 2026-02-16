@@ -740,14 +740,14 @@ runcmd:
         "defaults": {
           "model": {
             "primary": "anthropic/claude-sonnet-4-5",
-            "fallbacks": ["deepseek/deepseek-reasoner"]
+            "fallbacks": ["openrouter/deepseek/deepseek-reasoner"]
           },
           "models": {
             "anthropic/claude-sonnet-4-5": {},
-            "deepseek/deepseek-reasoner": {}
+            "openrouter/deepseek/deepseek-reasoner": {}
           },
           "subagents": {
-            "model": "deepseek/deepseek-reasoner",
+            "model": "openrouter/deepseek/deepseek-reasoner",
             "maxConcurrent": 1,
             "archiveAfterMinutes": 60
           },
