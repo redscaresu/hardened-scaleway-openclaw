@@ -15,7 +15,7 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 # openclaw_version  = "v2026.2.14"
 
 # Deploy optimised multi-model config (Sonnet primary, DeepSeek fallback/subagents,
-# free Llama heartbeat every 60m). Set to false for vanilla openclaw defaults.
+# free Llama heartbeat every 120m). Set to false for vanilla openclaw defaults.
 # openclaw_optimised_config = true
 
 # The following are prompted during plan/apply for security (not stored in files):
@@ -24,8 +24,8 @@ backup_bucket_name  = "hso-backups-XXXXXXXX"
 
 # Sensitive credentials — set via .env.terraform (sourced before plan/apply):
 #   TF_VAR_openclaw_gateway_token, TF_VAR_anthropic_api_key,
-#   TF_VAR_openai_api_key, TF_VAR_deepseek_api_key, TF_VAR_telegram_bot_token,
-#   TF_VAR_github_token
+#   TF_VAR_openai_api_key, TF_VAR_deepseek_api_key, TF_VAR_openrouter_key,
+#   TF_VAR_telegram_bot_token, TF_VAR_github_token
 #   TF_VAR_squid_extra_domains (JSON list, e.g. '[".example.com", ".other.com"]')
 
 # SSH access: set to false for Tailscale-only (no public SSH at all)

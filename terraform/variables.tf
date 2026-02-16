@@ -87,6 +87,13 @@ variable "deepseek_api_key" {
   default     = ""
 }
 
+variable "openrouter_key" {
+  description = "OpenRouter API key for openclaw (free Llama heartbeat model)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "openclaw_version" {
   description = "Openclaw version tag to install (e.g. v2026.2.14)"
   type        = string

@@ -293,6 +293,7 @@ write_files:
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       GITHUB_TOKEN=${github_token}
       DEEPSEEK_API_KEY=${deepseek_api_key}
+      OPENROUTER_API_KEY=${openrouter_key}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
       http_proxy=http://127.0.0.1:3128
       https_proxy=http://127.0.0.1:3128
@@ -736,17 +737,13 @@ runcmd:
             "primary": "anthropic/claude-sonnet-4-5",
             "fallbacks": ["deepseek/deepseek-reasoner"]
           },
-          "models": {
-            "anthropic/claude-sonnet-4-5": { "alias": "sonnet" },
-            "deepseek/deepseek-chat": { "alias": "ds" }
-          },
           "subagents": {
             "model": "deepseek/deepseek-reasoner",
             "maxConcurrent": 1,
             "archiveAfterMinutes": 60
           },
           "heartbeat": {
-            "every": "60m",
+            "every": "120m",
             "model": "openrouter/meta-llama/llama-3.3-70b-instruct:free"
           }
         }
@@ -766,6 +763,25 @@ runcmd:
     OCJSON
     chown openclaw:openclaw /var/lib/openclaw/openclaw.json
     chmod 600 /var/lib/openclaw/openclaw.json
+%{ endif ~}
+
+  # OPENCLAW: Write OpenRouter auth profile (required for free Llama heartbeat)
+%{ if openrouter_key != "" ~}
+  - |
+    mkdir -p /var/lib/openclaw/agents/main/agent
+    cat > /var/lib/openclaw/agents/main/agent/auth-profiles.json << 'AUTHEOF'
+    {
+      "profiles": {
+        "openrouter:default": {
+          "type": "api_key",
+          "provider": "openrouter",
+          "key": "${openrouter_key}"
+        }
+      }
+    }
+    AUTHEOF
+    chown -R openclaw:openclaw /var/lib/openclaw/agents
+    chmod 600 /var/lib/openclaw/agents/main/agent/auth-profiles.json
 %{ endif ~}
 
   - systemctl enable openclaw

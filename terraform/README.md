@@ -183,6 +183,7 @@ Edit `.env.terraform` (created by the bootstrap script) and fill in the sensitiv
 - `TF_VAR_anthropic_api_key` — from https://console.anthropic.com/settings/keys
 - `TF_VAR_telegram_bot_token` — from [@BotFather](https://t.me/botfather) on Telegram
 - `TF_VAR_github_token` — from GitHub > Settings > Developer settings > Personal access tokens
+- `TF_VAR_openrouter_key` — from https://openrouter.ai/keys (free — required for free Llama heartbeat)
 - `TF_VAR_squid_extra_domains` — JSON list of extra proxy domains (e.g. `'[".example.com"]'`)
 
 These are read automatically by Terraform via `source .env.terraform`. The file is gitignored and chmod 600.
@@ -630,12 +631,12 @@ When `openclaw_optimised_config = true` (default), a multi-model config is deplo
 
 | Role | Model | Cost |
 |---|---|---|
-| **Primary** | `anthropic/claude-sonnet-4-5` (alias: `sonnet`) | Paid |
+| **Primary** | `anthropic/claude-sonnet-4-5` | Paid |
 | **Fallback** | `deepseek/deepseek-reasoner` | Paid |
 | **Subagents** | `deepseek/deepseek-reasoner` (max 1 concurrent) | Paid |
-| **Heartbeat** | `openrouter/meta-llama/llama-3.3-70b-instruct:free` (every 60m) | Free |
+| **Heartbeat** | `openrouter/meta-llama/llama-3.3-70b-instruct:free` (every 120m) | Free |
 
-Model alias `ds` is available for `deepseek/deepseek-chat`. Set `openclaw_optimised_config = false` for vanilla defaults.
+Requires `TF_VAR_openrouter_key` in `.env.terraform` for the free Llama heartbeat. Set `openclaw_optimised_config = false` for vanilla defaults.
 
 Access the web UI via SSH tunnel:
 ```bash
