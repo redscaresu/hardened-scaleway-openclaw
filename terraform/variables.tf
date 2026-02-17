@@ -80,13 +80,6 @@ variable "github_token" {
   default     = ""
 }
 
-variable "deepseek_api_key" {
-  description = "DeepSeek API key for openclaw (fallback/subagent model)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
 variable "brave_api_key" {
   description = "Brave Search API key for openclaw web search"
   type        = string

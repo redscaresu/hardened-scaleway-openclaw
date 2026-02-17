@@ -293,7 +293,6 @@ write_files:
       OPENAI_API_KEY=${openai_api_key}
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       GITHUB_TOKEN=${github_token}
-      DEEPSEEK_API_KEY=${deepseek_api_key}
       OPENROUTER_API_KEY=${openrouter_key}
       BRAVE_API_KEY=${brave_api_key}
       OPENCLAW_STATE_DIR=/var/lib/openclaw
@@ -501,10 +500,10 @@ write_files:
       .anthropic.com
       .openai.com
       .openrouter.ai
-      .deepseek.com
 
       # Brave Search API
       .brave.com
+
 
       # Telegram Bot API (for openclaw)
       .telegram.org
@@ -731,7 +730,21 @@ runcmd:
       HOME=/var/lib/openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw sudo -u openclaw /usr/bin/node /opt/openclaw/openclaw.mjs \
         config set channels.telegram.botToken "${telegram_bot_token}"
     fi
-  # OPENCLAW: Write optimised config (multi-model, subagents, free heartbeat)
+  # OPENCLAW: Register OpenRouter auth profile via non-interactive onboard
+  # This writes auth-profiles.json so sub-agents (heartbeat, tgbot) can resolve the key.
+  # Must run BEFORE the optimised config write (onboard sets its own defaults, we override).
+%{ if openrouter_key != "" ~}
+  - |
+    HOME=/var/lib/openclaw OPENCLAW_STATE_DIR=/var/lib/openclaw sudo -u openclaw \
+      /usr/bin/node /opt/openclaw/openclaw.mjs onboard \
+      --non-interactive --accept-risk \
+      --auth-choice openrouter-api-key \
+      --openrouter-api-key "${openrouter_key}" \
+      --skip-daemon --skip-channels --skip-skills --skip-health --skip-ui
+%{ endif ~}
+
+  # OPENCLAW: Write optimised config (multi-model, subagents, heartbeat)
+  # Overwrites any config set by onboard above with our preferred model setup.
 %{ if openclaw_optimised_config ~}
   - |
     cat > /var/lib/openclaw/openclaw.json << 'OCJSON'
@@ -739,15 +752,17 @@ runcmd:
       "agents": {
         "defaults": {
           "model": {
-            "primary": "anthropic/claude-sonnet-4-5",
-            "fallbacks": ["openrouter/deepseek/deepseek-reasoner"]
+            "primary": "openrouter/deepseek/deepseek-v3.2",
+            "fallbacks": ["anthropic/claude-sonnet-4-5"]
           },
           "models": {
             "anthropic/claude-sonnet-4-5": {},
-            "openrouter/deepseek/deepseek-reasoner": {}
+            "openrouter/google/gemini-2.5-flash-lite": {},
+            "openrouter/deepseek/deepseek-v3.2": {},
+            "openrouter/openai/gpt-4o-mini": {}
           },
           "subagents": {
-            "model": "openrouter/deepseek/deepseek-reasoner",
+            "model": "openrouter/google/gemini-2.5-flash-lite",
             "maxConcurrent": 1,
             "archiveAfterMinutes": 60
           },
@@ -772,25 +787,6 @@ runcmd:
     OCJSON
     chown openclaw:openclaw /var/lib/openclaw/openclaw.json
     chmod 600 /var/lib/openclaw/openclaw.json
-%{ endif ~}
-
-  # OPENCLAW: Write OpenRouter auth profile (required for free Llama heartbeat)
-%{ if openrouter_key != "" ~}
-  - |
-    mkdir -p /var/lib/openclaw/agents/main/agent
-    cat > /var/lib/openclaw/agents/main/agent/auth-profiles.json << 'AUTHEOF'
-    {
-      "profiles": {
-        "openrouter:default": {
-          "type": "api_key",
-          "provider": "openrouter",
-          "key": "${openrouter_key}"
-        }
-      }
-    }
-    AUTHEOF
-    chown -R openclaw:openclaw /var/lib/openclaw/agents
-    chmod 600 /var/lib/openclaw/agents/main/agent/auth-profiles.json
 %{ endif ~}
 
   - systemctl enable openclaw

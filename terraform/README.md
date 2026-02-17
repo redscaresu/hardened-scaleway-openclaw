@@ -183,7 +183,7 @@ Edit `.env.terraform` (created by the bootstrap script) and fill in the sensitiv
 - `TF_VAR_anthropic_api_key` — from https://console.anthropic.com/settings/keys
 - `TF_VAR_telegram_bot_token` — from [@BotFather](https://t.me/botfather) on Telegram
 - `TF_VAR_github_token` — from GitHub > Settings > Developer settings > Personal access tokens
-- `TF_VAR_openrouter_key` — from https://openrouter.ai/keys (free — required for free Llama heartbeat)
+- `TF_VAR_openrouter_key` — from https://openrouter.ai/keys (required for primary model, subagents, and heartbeat via OpenRouter)
 - `TF_VAR_squid_extra_domains` — JSON list of extra proxy domains (e.g. `'[".example.com"]'`)
 
 These are read automatically by Terraform via `source .env.terraform`. The file is gitignored and chmod 600.
@@ -442,7 +442,7 @@ The default allowlist covers essential services only:
 | **GitHub** | `.github.com`, `.githubusercontent.com` |
 | **Scaleway** | `.scw.cloud`, `.scaleway.com` |
 | **Node.js** | `.nodesource.com`, `.npmjs.org`, `.npmjs.com` |
-| **AI APIs** | `.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.deepseek.com`, `.brave.com` |
+| **AI APIs** | `.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.brave.com` |
 | **Telegram** | `.telegram.org` |
 | **Extra** | User-defined via `TF_VAR_squid_extra_domains` (sensitive) |
 
@@ -623,7 +623,7 @@ sudo journalctl -t signal-alert --no-pager -n 20
 
 Openclaw is deployed as a systemd service (`openclaw.service`) running as a dedicated `openclaw` user with security hardening (private tmp, protected system, restricted syscalls). The version is pinned via `openclaw_version` (default `v2026.2.14`) for reproducible deploys.
 
-All outbound traffic from openclaw is routed through the squid proxy — it cannot access any domain not on the allowlist. Core API domains (`.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.deepseek.com`, `.telegram.org`) are in the base allowlist; additional domains are added via `TF_VAR_squid_extra_domains` (sensitive).
+All outbound traffic from openclaw is routed through the squid proxy — it cannot access any domain not on the allowlist. Core API domains (`.anthropic.com`, `.openai.com`, `.openrouter.ai`, `.telegram.org`, `.brave.com`) are in the base allowlist; additional domains are added via `TF_VAR_squid_extra_domains` (sensitive).
 
 ### Optimised Config
 
@@ -631,12 +631,12 @@ When `openclaw_optimised_config = true` (default), a multi-model config is deplo
 
 | Role | Model | Cost |
 |---|---|---|
-| **Primary** | `anthropic/claude-sonnet-4-5` | Paid |
-| **Fallback** | `deepseek/deepseek-reasoner` | Paid |
-| **Subagents** | `deepseek/deepseek-reasoner` (max 1 concurrent) | Paid |
+| **Primary** | `openrouter/deepseek/deepseek-v3.2` | Paid (via OpenRouter) |
+| **Fallback** | `anthropic/claude-sonnet-4-5` | Paid |
+| **Subagents** | `openrouter/google/gemini-2.5-flash-lite` (max 1 concurrent) | ~$0 |
 | **Heartbeat** | `openrouter/google/gemini-2.5-flash-lite` (every 120m) | ~$0 |
 
-Requires `TF_VAR_openrouter_key` in `.env.terraform` for the heartbeat model. Set `openclaw_optimised_config = false` for vanilla defaults.
+Requires `TF_VAR_openrouter_key` in `.env.terraform` for OpenRouter models (primary, subagents, heartbeat). Set `openclaw_optimised_config = false` for vanilla defaults.
 
 Access the web UI via SSH tunnel:
 ```bash
