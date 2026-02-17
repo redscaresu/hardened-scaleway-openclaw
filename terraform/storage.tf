@@ -8,14 +8,20 @@ resource "scaleway_iam_application" "backup" {
 }
 
 # API key for backup application
+# NOTE: default_project_id is set to org ID because bootstrap creates buckets
+# at the organization scope (Scaleway Object Storage default).
+# S3 clients that don't support the @PROJECT_ID suffix need this to match
+# the bucket's owner scope.
 resource "scaleway_iam_api_key" "backup" {
-  count          = var.enable_backups ? 1 : 0
-  application_id = scaleway_iam_application.backup[0].id
-  description    = "API key for openclaw backups to object storage"
+  count              = var.enable_backups ? 1 : 0
+  application_id     = scaleway_iam_application.backup[0].id
+  description        = "API key for openclaw backups to object storage"
+  default_project_id = scaleway_iam_application.backup[0].organization_id
 }
 
 # Policy to allow access to backup bucket
-# Scoped to minimum required permissions for restic:
+# Scoped to organization (bucket is org-owned, not project-scoped).
+# Minimum permissions for restic:
 #   - BucketsRead: list bucket contents (restic snapshots, restic check)
 #   - ObjectsRead: download objects (restic restore)
 #   - ObjectsWrite: upload objects (restic backup)
@@ -28,7 +34,7 @@ resource "scaleway_iam_policy" "backup" {
   application_id = scaleway_iam_application.backup[0].id
 
   rule {
-    project_ids = [scaleway_instance_security_group.openclaw.project_id]
+    organization_id = scaleway_iam_application.backup[0].organization_id
     permission_set_names = [
       "ObjectStorageBucketsRead",
       "ObjectStorageObjectsRead",
