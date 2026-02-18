@@ -18,7 +18,7 @@ A single Scaleway instance with defense-in-depth security:
 | **SSH** | Key-only auth (ed25519), root login disabled, rate-limited, fail2ban |
 | **Kernel** | SYN flood protection, anti-spoofing, restricted dmesg, hidden kernel pointers |
 | **Monitoring** | AIDE file integrity checks, auditd syscall auditing, prometheus-node-exporter |
-| **App** | Openclaw AI gateway on loopback:18789, Telegram bot integration, health-checked |
+| **App** | Openclaw AI gateway on loopback:18789, Telegram bot integration, health-checked, optional headless Chrome (proxy-enforced) |
 | **Alerts** | Signal messenger notifications for security events and blocked outbound requests |
 | **Backups** | Nightly encrypted backups to S3 via restic (7 daily, 4 weekly, 12 monthly) |
 | **Updates** | Unattended security patches with automatic reboot |
@@ -139,6 +139,66 @@ open http://localhost:18789
 Post-deploy setup:
 1. **Link Signal** — `sudo link-signal.sh` (scan QR code with Signal app)
 2. **Pair Telegram** — `sudo pair-telegram.sh` (send `/start` to your bot, paste the code)
+
+## Browser Automation
+
+Optional headless Chrome for openclaw browser automation (e.g. navigating eBay, Vinted, Amazon listings). Disabled by default.
+
+```hcl
+# terraform.tfvars
+enable_browser_automation = true
+```
+
+### How it works
+
+Chrome runs as the `openclaw` user, which means **all browser traffic is forced through the squid proxy** — the same allowlist and iptables rules that govern openclaw's other outbound requests apply to the browser. Domains not on the allowlist get a `403 TCP_DENIED` from squid.
+
+The browser config is written to `/var/lib/openclaw/openclaw.json`:
+
+```json
+{
+  "browser": {
+    "headless": true,
+    "noSandbox": true,
+    "executablePath": "/usr/bin/google-chrome-stable"
+  }
+}
+```
+
+### Adding domains for target sites
+
+Browser automation needs CDN domains (images, scripts) in addition to the main site domain. Add these to `TF_VAR_squid_extra_domains` in `.env.terraform`:
+
+| Site | Domains needed |
+|---|---|
+| eBay | `.ebay.com`, `.ebay.co.uk`, `.ebayimg.com`, `.ebaystatic.com` |
+| Vinted | `.vinted.co.uk`, `.vinted.net` |
+| Amazon | `.amazon.co.uk`, `.ssl-images-amazon.com`, `.media-amazon.com` |
+| Gumtree | `.gumtree.com`, `.classistatic.com` |
+
+If pages render incorrectly, check squid access logs for `TCP_DENIED` entries and add the missing domains:
+
+```bash
+sudo grep TCP_DENIED /var/log/squid/access.log | tail -20
+```
+
+### Live server install (without redeploy)
+
+```bash
+# Install Chrome
+sudo apt-get update && sudo apt-get install -y google-chrome-stable
+
+# Or download the .deb directly
+curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt-get install -y /tmp/chrome.deb
+
+# Add CDN domains to squid allowlist
+echo '.ebayimg.com' | sudo tee -a /etc/squid/allowed-domains.txt
+sudo systemctl reload squid
+
+# Restart openclaw to pick up config changes
+sudo systemctl restart openclaw
+```
 
 ## File Structure
 
