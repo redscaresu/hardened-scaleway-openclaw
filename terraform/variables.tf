@@ -124,6 +124,12 @@ variable "enable_backups" {
   default     = true
 }
 
+variable "enable_browser_automation" {
+  description = "Install Google Chrome and enable openclaw headless browser automation"
+  type        = bool
+  default     = false
+}
+
 variable "backup_bucket_name" {
   description = "Name of S3 bucket for backups (created by bootstrap script)"
   type        = string

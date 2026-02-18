@@ -44,6 +44,7 @@ resource "scaleway_instance_server" "openclaw" {
       openrouter_key            = var.openrouter_key
       openclaw_version          = var.openclaw_version
       openclaw_optimised_config = var.openclaw_optimised_config
+      enable_browser_automation = var.enable_browser_automation
       squid_extra_domains       = var.squid_extra_domains
       backup_bucket             = var.backup_bucket_name
       aws_access_key            = var.enable_backups ? scaleway_iam_api_key.backup[0].access_key : ""

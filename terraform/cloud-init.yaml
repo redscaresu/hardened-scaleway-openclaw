@@ -630,6 +630,15 @@ runcmd:
       echo '/swapfile none swap sw 0 0' >> /etc/fstab
     fi
 
+  # BROWSER AUTOMATION: Install Google Chrome stable (headless, no X11 needed)
+%{ if enable_browser_automation ~}
+  - |
+    curl -fsSL -o /tmp/google-chrome-stable.deb \
+      https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    apt-get install -y /tmp/google-chrome-stable.deb || apt-get install -fy
+    rm -f /tmp/google-chrome-stable.deb
+%{ endif ~}
+
   # OPENCLAW: Install Node.js 22 and pnpm
   - |
     curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
@@ -782,6 +791,28 @@ runcmd:
             "enabled": true
           }
         }
+      }
+%{ if enable_browser_automation ~}
+      ,"browser": {
+        "headless": true,
+        "noSandbox": true,
+        "executablePath": "/usr/bin/google-chrome-stable"
+      }
+%{ endif ~}
+    }
+    OCJSON
+    chown openclaw:openclaw /var/lib/openclaw/openclaw.json
+    chmod 600 /var/lib/openclaw/openclaw.json
+%{ endif ~}
+
+%{ if !openclaw_optimised_config && enable_browser_automation ~}
+  - |
+    cat > /var/lib/openclaw/openclaw.json << 'OCJSON'
+    {
+      "browser": {
+        "headless": true,
+        "noSandbox": true,
+        "executablePath": "/usr/bin/google-chrome-stable"
       }
     }
     OCJSON
