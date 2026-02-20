@@ -200,10 +200,32 @@ sudo systemctl reload squid
 sudo systemctl restart openclaw
 ```
 
+## Local Testing
+
+Validate Terraform plans offline using [Mockway](https://github.com/redscaresu/mockway), a stateful mock of the Scaleway API. No real credentials or infrastructure needed.
+
+**Prerequisites:** Go toolchain, mockway repo cloned as a sibling directory (`../mockway`)
+
+```bash
+make test-plan                            # Build mockway, run terraform plan against it
+make test-plan MOCKWAY_SRC=/other/path    # Use a different mockway checkout
+make fmt                                  # terraform fmt
+make validate                             # terraform validate (needs .env.terraform)
+```
+
+`make test-plan` catches:
+- Cloud-init template rendering errors (variable mismatches, bad HCL template syntax)
+- HCL syntax and type errors
+- Resource planning failures against all Scaleway resource types
+- Missing or misconfigured variable definitions
+
 ## File Structure
 
 ```
 ├── README.md                              # This file
+├── Makefile                               # fmt, validate, test-plan targets
+├── scripts/
+│   └── test-with-mock.sh                  # Runs terraform plan against mockway
 └── terraform/
     ├── README.md                          # Detailed setup, security docs, troubleshooting
     ├── bootstrap/
@@ -232,10 +254,9 @@ See [`terraform/README.md`](terraform/README.md) for:
 
 Contributions welcome. Please open an issue to discuss changes before submitting a PR.
 
-- Run `terraform fmt` before committing
-- Run `terraform validate` to check for errors
+- Run `make test-plan` to validate against mockway before deploying
+- Run `make fmt` before committing
 - Never commit files containing credentials
-- Test with `terraform plan` before applying
 
 ## License
 
