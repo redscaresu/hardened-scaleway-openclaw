@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────
-# test-with-mock.sh — Run terraform plan against mockway
+# test-with-mock.sh — Run terraform apply+destroy against mockway
 # ──────────────────────────────────────────────
 
 TF_DIR="$(cd "$(dirname "$0")/../terraform" && pwd)"
@@ -83,37 +83,43 @@ export SCW_DEFAULT_ZONE="fr-par-1"
 TF_TEMP_DIR="$(mktemp -d)"
 export TF_DATA_DIR="$TF_TEMP_DIR"
 
-# Override the S3 backend with local backend (cleaned up by trap)
+# Override the S3 backend with local backend using temp state path (cleaned up by trap)
 OVERRIDE_FILE="$TF_DIR/backend_override.tf"
-cat > "$OVERRIDE_FILE" <<'EOF'
+cat > "$OVERRIDE_FILE" <<EOF
 terraform {
-  backend "local" {}
+  backend "local" {
+    path = "$TF_TEMP_DIR/test.tfstate"
+  }
 }
 EOF
 
-# ── Terraform init (local backend — no real S3 state needed) ──
+TF_VARS=(
+  -var 'tailscale_auth_key=tskey-auth-test-dummy'
+  -var 'openclaw_gateway_token=test-gateway-token'
+  -var 'signal_alert_number=+15551234567'
+  -var 'backup_bucket_name=test-bucket'
+)
+
+# ── Terraform init ──
 echo ""
 echo "=== terraform init ==="
-terraform -chdir="$TF_DIR" init -input=false
+terraform -chdir="$TF_DIR" init -input=false -reconfigure
 
-# ── Terraform plan with dummy values for required sensitive vars ──
+# ── Terraform apply ──
 echo ""
-echo "=== terraform plan ==="
-terraform -chdir="$TF_DIR" plan \
-  -var 'tailscale_auth_key=tskey-auth-test-dummy' \
-  -var 'openclaw_gateway_token=test-gateway-token' \
-  -var 'signal_alert_number=+15551234567' \
-  -var 'backup_bucket_name=test-bucket' \
-  -input=false \
-  -detailed-exitcode \
-  && PLAN_EXIT=0 || PLAN_EXIT=$?
+echo "=== terraform apply ==="
+terraform -chdir="$TF_DIR" apply \
+  "${TF_VARS[@]}" \
+  -auto-approve \
+  -input=false
 
-# -detailed-exitcode: 0=no changes, 1=error, 2=changes present
+# ── Terraform destroy ──
 echo ""
-if [[ $PLAN_EXIT -eq 0 || $PLAN_EXIT -eq 2 ]]; then
-  echo "=== PASS: terraform plan succeeded ==="
-  exit 0
-else
-  echo "=== FAIL: terraform plan returned errors ==="
-  exit 1
-fi
+echo "=== terraform destroy ==="
+terraform -chdir="$TF_DIR" destroy \
+  "${TF_VARS[@]}" \
+  -auto-approve \
+  -input=false
+
+echo ""
+echo "=== PASS: apply + destroy succeeded ==="

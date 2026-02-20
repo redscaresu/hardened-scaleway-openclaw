@@ -1,7 +1,6 @@
-MOCKWAY_SRC ?= ../mockway
-TF_DIR       = terraform
+TF_DIR = terraform
 
-.PHONY: fmt validate test-plan mockway-build
+.PHONY: fmt validate test-plan test-apply
 
 fmt:
 	terraform -chdir=$(TF_DIR) fmt
@@ -9,8 +8,9 @@ fmt:
 validate:
 	cd $(TF_DIR) && source .env.terraform && terraform validate
 
-mockway-build:
-	cd $(MOCKWAY_SRC) && go install ./cmd/mockway
+test-plan:
+	./scripts/test-plan.sh
 
-test-plan: mockway-build
+test-apply:
+	@command -v mockway >/dev/null 2>&1 || go install github.com/redscaresu/mockway/cmd/mockway@latest
 	./scripts/test-with-mock.sh
