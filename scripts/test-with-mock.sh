@@ -8,7 +8,13 @@ set -euo pipefail
 TF_DIR="$(cd "$(dirname "$0")/../terraform" && pwd)"
 MOCKWAY_PID=""
 TF_TEMP_DIR=""
-OVERRIDE_FILE=""
+OVERRIDE_FILE="$TF_DIR/backend_override.tf"
+
+# Clean up stale override file from a previous interrupted run
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  echo "WARNING: Removing stale $OVERRIDE_FILE from a previous run"
+  rm -f "$OVERRIDE_FILE"
+fi
 
 cleanup() {
   if [[ -n "$MOCKWAY_PID" ]] && kill -0 "$MOCKWAY_PID" 2>/dev/null; then
@@ -84,7 +90,6 @@ TF_TEMP_DIR="$(mktemp -d)"
 export TF_DATA_DIR="$TF_TEMP_DIR"
 
 # Override the S3 backend with local backend using temp state path (cleaned up by trap)
-OVERRIDE_FILE="$TF_DIR/backend_override.tf"
 cat > "$OVERRIDE_FILE" <<EOF
 terraform {
   backend "local" {
