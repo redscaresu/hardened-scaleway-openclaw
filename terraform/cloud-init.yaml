@@ -354,6 +354,10 @@ write_files:
 
       OC_HOME="/var/lib/openclaw"
       OC_CLI="/usr/bin/node /opt/openclaw/openclaw.mjs"
+      # Gateway credential path (no .openclaw prefix)
+      GW_CREDS="$OC_HOME/credentials"
+      # CLI credential path (.openclaw prefix — where the CLI reads/writes)
+      CLI_CREDS="$OC_HOME/.openclaw/credentials"
       TOKEN=$(grep OPENCLAW_GATEWAY_TOKEN "$OC_HOME/.env" | cut -d= -f2)
 
       echo "=== Openclaw Telegram Pairing ==="
@@ -369,11 +373,25 @@ write_files:
         exit 1
       fi
 
-      # OPENCLAW_STATE_DIR ensures the CLI uses the same paths as the gateway
-      # (without it, CLI defaults to $HOME/.openclaw/ while gateway uses $OPENCLAW_STATE_DIR/)
+      # The gateway writes pending pairing requests to $OC_HOME/credentials/
+      # but the CLI reads from $OC_HOME/.openclaw/credentials/ — sync before approve
+      mkdir -p "$CLI_CREDS"
+      if [ -f "$GW_CREDS/telegram-pairing.json" ]; then
+        cp "$GW_CREDS/telegram-pairing.json" "$CLI_CREDS/telegram-pairing.json"
+        chown openclaw:openclaw "$CLI_CREDS/telegram-pairing.json"
+      fi
+
       HOME="$OC_HOME" OPENCLAW_STATE_DIR="$OC_HOME" sudo -u openclaw \
         OPENCLAW_GATEWAY_TOKEN="$TOKEN" \
         $OC_CLI pairing approve telegram "$CODE"
+
+      # Sync CLI's approval back to the gateway's credential path
+      for f in telegram-allowFrom.json telegram-pairing.json; do
+        if [ -f "$CLI_CREDS/$f" ]; then
+          cp "$CLI_CREDS/$f" "$GW_CREDS/$f"
+          chown openclaw:openclaw "$GW_CREDS/$f"
+        fi
+      done
 
       # Restart gateway to pick up the approved pairing
       echo "Restarting openclaw gateway..."

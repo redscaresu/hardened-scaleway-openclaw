@@ -89,6 +89,8 @@ sudo link-signal.sh
 sudo pair-telegram.sh
 ```
 
+> **Telegram pairing gotcha:** The gateway and CLI use different credential paths (`$STATE_DIR/credentials/` vs `$STATE_DIR/.openclaw/credentials/`). Running `openclaw pairing approve` directly will fail with "No pending pairing request found." Always use `sudo pair-telegram.sh` — it syncs the pending request from the gateway's path to the CLI's path, runs approval as the `openclaw` user, then syncs the result back.
+
 ## Architecture
 
 ```
@@ -234,14 +236,20 @@ sudo bash -c 'source /root/.restic-env && restic snapshots'
 
 After `terraform apply` and cloud-init completes on the new instance:
 
+> **Password mismatch:** Each new instance generates a fresh restic password. To restore from a previous instance's backups, you must use the **old** password (the one you saved). Replace the new password in `/root/.restic-env` before restoring, or pass it via `RESTIC_PASSWORD`.
+
 ```bash
-# List available snapshots
+# Replace the new instance's restic password with the saved one
+sudo sed -i 's|RESTIC_PASSWORD=.*|RESTIC_PASSWORD="<your-saved-password>"|' /root/.restic-env
+
+# Verify access to old backups
 sudo bash -c 'source /root/.restic-env && restic snapshots'
 
-# Restore openclaw state (config, workspace, databases, sessions)
+# Stop the gateway, restore, fix ownership, restart
+sudo systemctl stop openclaw
 sudo bash -c 'source /root/.restic-env && restic restore latest --target / --include /var/lib/openclaw/'
 sudo chown -R openclaw:openclaw /var/lib/openclaw/
-sudo systemctl restart openclaw
+sudo systemctl start openclaw
 
 # Optional: restore system configs (SSH hardening, sysctl, alert config)
 sudo bash -c 'source /root/.restic-env && restic restore latest --target / --include /etc/ssh/sshd_config.d/ --include /etc/sysctl.d/ --include /etc/openclaw-alerts.conf'
