@@ -200,6 +200,62 @@ sudo systemctl reload squid
 sudo systemctl restart openclaw
 ```
 
+## Backup & Restore
+
+Nightly encrypted backups to Scaleway S3 via [restic](https://restic.net/) (2am daily). Backs up all openclaw state, config, credentials, workspace files, and databases.
+
+**What's backed up:** `/var/lib/openclaw/` (all state, config, sessions, databases), `/etc/ssh/sshd_config.d/`, `/etc/sysctl.d/`, `/etc/openclaw-alerts.conf`
+
+**Retention:** 7 daily, 4 weekly, 12 monthly snapshots.
+
+### Save your backup password
+
+The restic password is generated on first boot and exists **only on the server**. If lost, backups are unrecoverable. Save it immediately after deploy:
+
+```bash
+sudo grep RESTIC_PASSWORD /root/.restic-env
+```
+
+### Before a destroy/rebuild
+
+Trigger a fresh backup to capture changes since the last nightly run:
+
+```bash
+sudo /usr/local/bin/backup-server.sh
+```
+
+Verify it completed:
+
+```bash
+sudo bash -c 'source /root/.restic-env && restic snapshots'
+```
+
+### Restore after rebuild
+
+After `terraform apply` and cloud-init completes on the new instance:
+
+```bash
+# List available snapshots
+sudo bash -c 'source /root/.restic-env && restic snapshots'
+
+# Restore openclaw state (config, workspace, databases, sessions)
+sudo bash -c 'source /root/.restic-env && restic restore latest --target / --include /var/lib/openclaw/'
+sudo chown -R openclaw:openclaw /var/lib/openclaw/
+sudo systemctl restart openclaw
+
+# Optional: restore system configs (SSH hardening, sysctl, alert config)
+sudo bash -c 'source /root/.restic-env && restic restore latest --target / --include /etc/ssh/sshd_config.d/ --include /etc/sysctl.d/ --include /etc/openclaw-alerts.conf'
+```
+
+### What needs re-pairing after rebuild
+
+Signal-cli and Telegram are not backed up — they require interactive pairing:
+
+1. **Signal** — `sudo link-signal.sh` (scan QR code)
+2. **Telegram** — `sudo pair-telegram.sh` (paste code from `/start`)
+
+Tailscale re-authenticates automatically via the auth key in Terraform.
+
 ## Local Testing
 
 Validate Terraform plans offline using [Mockway](https://github.com/redscaresu/mockway), a stateful mock of the Scaleway API. No real credentials or infrastructure needed.
